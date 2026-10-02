@@ -33,7 +33,7 @@ services:
     image: grafana/grafana:13.1.3
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
     volumes:
       - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/tempo.yaml:ro

@@ -164,8 +164,9 @@ datasource from `grafana-datasources.yaml`. Ingestion uses port 4318; queries us
 port 3200. Container addresses use Compose service names.
 
 1. Create an order with `curl -i -X POST http://localhost:8080/orders`.
-2. Open <http://localhost:3000>. Anonymous Viewer access is enabled for this lab;
-   the published port is bound to localhost.
+2. Open <http://localhost:3000/explore>. Anonymous Admin access is enabled for
+   this lab so Explore is available without login; the published port is bound
+   to localhost. The login form is disabled. Viewer access does not grant Explore.
 3. Open **Explore**, select **Tempo**, and select the **TraceQL** query editor.
 4. Use the last 15 minutes and run:
 

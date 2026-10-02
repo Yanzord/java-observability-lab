@@ -188,7 +188,11 @@ The visualization experiment adds Tempo 3.1.0 in monolithic mode and Grafana
 13.1.3. The Collector forwards OTLP HTTP to Tempo on port 4318; Grafana queries
 Tempo on port 3200 using a provisioned datasource. Tempo keeps local WAL and
 blocks in `tempo-data`; Grafana uses `grafana-data`. Grafana is available at
-localhost:3000 with anonymous Viewer access. All published ports bind localhost.
+localhost:3000/explore with anonymous Admin access, which grants Explore without
+login. Viewer access does not grant Explore; API query access alone did not
+validate this UI permission. The login form is disabled. All published ports bind localhost.
+After applying Admin access, the Explore page returned HTTP 200 and its frontend
+bootstrap confirmed anonymous Admin, `datasources:explore`, and Explore enabled.
 No Java changes or dependencies were introduced.
 
 Validation: all five services started; Tempo readiness and Grafana health passed.
