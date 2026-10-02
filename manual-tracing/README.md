@@ -147,6 +147,19 @@ and transmission do not create a new trace or change parent relationships.
 A failed OTLP export is a telemetry delivery failure, separate from the result
 of creating an order; the exporter reports it through its export result and logs.
 
+## Service identity
+
+The tracer name `com.github.yanzord.manualtracing` identifies the instrumentation
+scope. `Resource` identifies the application that produced the telemetry.
+The SDK explicitly maps `spring.application.name` to resource attribute
+`service.name`, so both local and Collector logs show `manual-tracing`.
+Merging the service resource with `Resource.getDefault()` preserves
+`telemetry.sdk.name`, `telemetry.sdk.language`, and `telemetry.sdk.version`.
+
+Resource attributes are shared by the spans from this provider. They are not
+operation-specific attributes such as `order.id`. This configuration does not
+add automatic Spring instrumentation or resource detection.
+
 ## Test
 
 With PostgreSQL running and the environment loaded as above:

@@ -1,6 +1,7 @@
 package com.github.yanzord.manualtracing;
 
 import com.sun.net.httpserver.HttpServer;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
 import io.opentelemetry.sdk.trace.ReadableSpan;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
@@ -49,11 +50,16 @@ class OtlpExporterTests {
 
     @Test
     void sdkExportsCompletedSpanAsProtobufOverHttp() {
-        try (var sdk = new OpenTelemetryConfiguration().openTelemetrySdk(endpoint)) {
+        try (var sdk = new OpenTelemetryConfiguration().openTelemetrySdk(endpoint, "test-service")) {
             var span = sdk.getTracer("otlp-test").spanBuilder("otlp-experiment").startSpan();
             span.setAttribute("order.id", 42L);
             span.addEvent("payment-approved");
             span.end();
+
+            var resource = ((ReadableSpan) span).toSpanData().getResource();
+            assertEquals("test-service", resource.getAttribute(AttributeKey.stringKey("service.name")));
+            assertEquals("java", resource.getAttribute(AttributeKey.stringKey("telemetry.sdk.language")));
+            assertEquals("opentelemetry", resource.getAttribute(AttributeKey.stringKey("telemetry.sdk.name")));
 
             var result = sdk.getSdkTracerProvider().forceFlush().join(10, TimeUnit.SECONDS);
             assertTrue(result.isSuccess());
@@ -63,6 +69,8 @@ class OtlpExporterTests {
             assertTrue(payload.contains("otlp-experiment"));
             assertTrue(payload.contains("order.id"));
             assertTrue(payload.contains("payment-approved"));
+            assertTrue(payload.contains("service.name"));
+            assertTrue(payload.contains("test-service"));
         }
     }
 

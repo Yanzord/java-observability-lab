@@ -94,8 +94,9 @@ handling. Failed persistence records an exception and sets error status.
 
 The SDK pipeline remains `OpenTelemetrySdk` → `SdkTracerProvider` → `Tracer`
 → `Span` → two `SimpleSpanProcessor` instances, exporting through
-`InspectingSpanExporter` and `OtlpHttpSpanExporter`. No explicit `Resource`
-or `service.name` is configured; the tracer name identifies instrumentation scope.
+`InspectingSpanExporter` and `OtlpHttpSpanExporter`. An explicit `Resource` maps
+`spring.application.name` to `service.name`; the tracer name identifies
+instrumentation scope.
 
 Earlier experiments established that creating a span does not make it current,
 `Context.with(span)` creates an immutable derived context, closing a scope restores
@@ -174,7 +175,15 @@ POST/Protobuf delivery and a rejected export (HTTP 400). Docker build passed;
 a real POST returned 201, and the Collector decoded all four spans with matching
 trace/span/parent IDs, `order.id`, and `payment-approved`. All three Compose
 services were left running. Root parent ID is zero in local inspection but empty
-in the Collector output. Service metadata remains `unknown_service:java`.
+in the Collector output. Service metadata is now `manual-tracing`.
+
+The resource experiment merges `Resource.getDefault()` with an explicit
+`service.name` read from `spring.application.name`, then associates it with the
+tracer provider. No new dependency or automatic resource detection was added.
+Six tests passed, checking that the configured service name is exported and SDK
+name/language attributes are preserved. Docker build passed; a real POST returned
+201, and all four Collector spans carried `service.name=manual-tracing` with SDK
+metadata intact. Collector log metadata still uses its own service name `otelcol`.
 
 ## Completed Milestones
 
@@ -194,6 +203,7 @@ in the Collector output. Service metadata remains `unknown_service:java`.
 - [x] Inspect exported spans
 - [x] Configure OTLP export
 - [x] Introduce OpenTelemetry Collector
+- [x] Identify the telemetry service through Resource
 - [ ] Visualize traces in a tracing backend
 
 ## Concepts to Learn
@@ -364,11 +374,10 @@ The backend should be selected only when this stage is reached.
 
 ## Current Focus
 
-Review OTLP delivery and the minimal Collector configuration. Explain the
-receiver, debug exporter, and traces pipeline before adding more components.
-Compare both log outputs and note the default `unknown_service:java` resource.
-Select a tracing backend only after the Collector's role is understood.
-Keep the domain limited to ID and creation date.
+Review the distinction between service resource, instrumentation scope, and
+operation attributes. Then select a tracing backend to visualize the existing
+manual traces through the Collector. Keep local inspection available and retain
+explicit instrumentation. Keep the domain limited to ID and creation date.
 
 Do not implement the next experiment until explicitly requested.
 
