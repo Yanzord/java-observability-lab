@@ -8,7 +8,8 @@ Requires Docker Compose. Running or testing outside Docker also requires Java 21
 Run commands from this directory. If `.env` does not exist, create it with a
 `POSTGRES_PASSWORD` variable containing a local password. Environment files and
 their variants are ignored by Git.
-Compose reads `.env` automatically. Build and start the application, PostgreSQL, Collector, Tempo, and Grafana:
+Compose reads `.env` automatically. Build and start the application, PostgreSQL,
+Collector, Tempo, and Grafana:
 
 ```bash
 docker compose up --build -d
@@ -23,11 +24,12 @@ uses `localhost` when running outside Docker.
 ### Run locally or in IntelliJ
 
 If the application container is running, stop it to free port 8080. Then start
-PostgreSQL and the Collector and export the environment before running Gradle:
+PostgreSQL, the Collector, and Grafana, then export the environment before
+running Gradle (Tempo starts as a dependency):
 
 ```bash
 docker compose stop app
-docker compose up -d --wait postgres collector
+docker compose up -d --wait postgres collector grafana
 set -a
 source .env
 set +a
@@ -167,7 +169,7 @@ port 3200. Container addresses use Compose service names.
 2. Open <http://localhost:3000/explore>. Anonymous Admin access is enabled for
    this lab so Explore is available without login; the published port is bound
    to localhost. The login form is disabled. Viewer access does not grant Explore.
-3. Open **Explore**, select **Tempo**, and select the **TraceQL** query editor.
+3. Select **Tempo** and select the **TraceQL** query editor.
 4. Use the last 15 minutes and run:
 
    ```traceql
@@ -187,12 +189,21 @@ specific order by replacing `17` with the returned order ID:
 { resource.service.name = "manual-tracing" && span.order.id = 17 }
 ```
 
-Mounted configuration changes require restarting the affected service. For
+Changes to mounted configuration files require restarting the affected service. For
 example, after editing the Collector configuration:
 
 ```bash
 docker compose restart collector
 ```
+
+Changes to Compose environment variables require recreating the container.
+For example, after changing Grafana's anonymous access role:
+
+```bash
+docker compose up -d --no-deps grafana
+```
+
+If the browser remains on the login page, open `/explore` directly and reload.
 
 Validation queried the same complete trace directly through Tempo and through
 Grafana's datasource proxy, checking all four spans, parent relationships,
