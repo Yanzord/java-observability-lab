@@ -90,10 +90,10 @@ try-with-resources scopes, and spans ended in `finally`. The request span covers
 the controller handler, excluding response serialization and the wider servlet
 lifecycle. `persist-order` covers the `saveAndFlush()` call. No incoming trace
 headers are extracted. Exceptions propagate through Spring MVC's default error
-handling; exception recording and error status remain future steps.
+handling. Failed persistence records an exception and sets error status.
 
 The SDK pipeline remains `OpenTelemetrySdk` → `SdkTracerProvider` → `Tracer`
-→ `Span` → `SimpleSpanProcessor` → `LoggingSpanExporter`. No explicit `Resource`
+→ `Span` → `SimpleSpanProcessor` → `InspectingSpanExporter`. No explicit `Resource`
 or `service.name` is configured; the tracer name identifies instrumentation scope.
 
 Earlier experiments established that creating a span does not make it current,
@@ -111,9 +111,8 @@ Validation:
   span cleanup on persistence failure. The persistence test clears the JPA cache
   before reloading from PostgreSQL and rolls back its data.
 
-The logging exporter summary does not display parent span IDs; the tests inspect
-exported `SpanData` to validate relationships. Both Compose services were left
-running for further experimentation. The application container uses UTC by
+Tests inspect exported `SpanData` to validate relationships. Rebuild the
+application image before observing new changes through Compose. The application container uses UTC by
 default; `creationDate` reflects the runtime's local timezone without an offset.
 
 The attributes experiment adds the custom numeric `order.id` attribute to
@@ -129,24 +128,31 @@ attributes describe the operation. The existing application log is separate
 from the span event. Four tests passed, including assertions that the event is
 attached only to the payment span and its timestamp falls within the span's
 lifetime. Approval remains recorded if subsequent persistence fails.
-The logging exporter summary does not display events; tests inspect exported
-`SpanData.getEvents()` to verify them. No exporter configuration was changed.
+Tests inspect exported `SpanData.getEvents()` to verify them.
 
 The exception experiment catches `RuntimeException` around persistence, calls
 `persistenceSpan.recordException(exception)`, and rethrows the same exception.
 The `finally` block still ends the span. Recording adds a timestamped `exception`
 event containing type, message, and stack trace; it does not change the status.
 Tests check event contents and timestamp and unchanged exception propagation.
-Only the persistence span records the
-exception; the enclosing order and request spans do not duplicate the event.
-The current logging exporter does not display exception events in its summary.
+Only the persistence span records the exception; the enclosing order and request spans do not duplicate the event.
 
 The status experiment explicitly sets `StatusCode.ERROR` in the persistence
 catch block, separately from exception recording. Success keeps the default
 `UNSET`; no explicit `OK` is set. Four tests passed, verifying `ERROR` only on
 failed persistence, `UNSET` on successful spans, and no automatic propagation
 of status to parent spans. Payment, order, and request remain `UNSET` in the
-failure experiment. The exporter summary omits status as well as events.
+failure experiment.
+
+The inspection experiment replaces the summary logging exporter with a small
+`InspectingSpanExporter`. It logs name, trace/span/parent IDs, kind, start/end
+nanoseconds, duration in milliseconds, status, attributes, events, resource,
+and instrumentation scope from each completed `SpanData`. Export is synchronous;
+flush and shutdown have no buffered data or external resources to manage.
+The now-unused logging exporter dependency was removed. Four tests passed,
+including output capture checks for parent IDs, approval events, order IDs,
+error status, and exception details. Database integration output also uses the
+new exporter. This is a local learning exporter, not an OTLP implementation.
 
 ## Completed Milestones
 
@@ -163,7 +169,7 @@ failure experiment. The exporter summary omits status as well as events.
 - [x] Add span events
 - [x] Record exceptions
 - [x] Set span status
-- [ ] Inspect exported spans
+- [x] Inspect exported spans
 - [ ] Configure OTLP export
 - [ ] Introduce OpenTelemetry Collector
 - [ ] Visualize traces in a tracing backend
@@ -336,11 +342,11 @@ The backend should be selected only when this stage is reached.
 
 ## Current Focus
 
-Review the distinction between exception recording and span status, then
-inspect complete exported spans. The current logging summary omits parent IDs,
-events, and status; select a small way to inspect these fields without hiding
-the explicit SDK pipeline or adding automatic instrumentation.
-Keep the domain limited to ID and creation date.
+Review the full inspection output and reconstruct the trace from parent IDs,
+then explore OTLP export. Understand how completed `SpanData` is serialized and
+sent to an endpoint rather than printed locally. Propose the required exporter
+dependency and select a receiver before implementation. Keep the domain limited
+to ID and creation date.
 
 Do not implement the next experiment until explicitly requested.
 

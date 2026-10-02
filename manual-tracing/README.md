@@ -77,22 +77,45 @@ attribute `order.id`. Span names remain stable across requests. Payment and
 request spans do not include this attribute. Inspect the exporter output for
 `{order.id=...}` alongside the tracing identifiers.
 The `process-payment` span includes a timestamped `payment-approved` event after
-dummy approval. This is separate from the application log message. The logging
-exporter summary does not display events; tests inspect exported span data to
-verify the event and its timestamp. The event remains recorded even if subsequent
-persistence fails.
+dummy approval. This is separate from the application log message. The event
+remains recorded even if subsequent persistence fails.
 
 If persistence throws a runtime exception, `persist-order` records it with
 `recordException()` before rethrowing the same exception. Exported span data
 includes an `exception` event with type, message, stack trace, and timestamp.
-The exporter summary does not display this event; the failure test inspects it.
 The order and request spans do not duplicate the event. The same catch block
 explicitly sets the persistence span status to `ERROR`. Successful spans keep
 the default `UNSET`; no explicit `OK` is set. Status does not propagate to parent
 spans, so order and request remain `UNSET` in this experiment even when the
-exception reaches them. The exporter summary does not display status; tests
-inspect exported span data. Exceptions continue to propagate through Spring
-MVC's default error handling.
+exception reaches them. Exceptions continue to propagate through Spring MVC's
+default error handling.
+
+## Inspect exported spans
+
+`InspectingSpanExporter` prints completed span data through the application logger:
+name, trace ID, span ID, parent span ID, kind, start/end epoch nanoseconds,
+duration in milliseconds, status, attributes, events, resource, and instrumentation
+scope. A root span has parent ID `0000000000000000`. Match a child's parent ID
+to another span's span ID to reconstruct the tree. All spans of the request share
+the same trace ID, even though children are logged before parents.
+
+Inspect `events` on `process-payment` for `payment-approved`. On persistence
+failure, `persist-order` shows `statusCode=ERROR` and an `exception` event with
+exception attributes. Each event includes its own timestamp. The simulated
+failure test validates this output without disrupting the running database:
+
+```bash
+./gradlew test --tests '*TracingExperimentTests.persistenceFailureEndsSpansAndRestoresContext'
+```
+
+The exporter logs synchronously through `SimpleSpanProcessor` when a span ends.
+It has no network connection or buffered batch. This is a local inspection
+exporter; OTLP export is a later step. Rebuild the image after source changes:
+
+```bash
+docker compose up --build -d app
+docker compose logs -f app
+```
 
 ## Test
 

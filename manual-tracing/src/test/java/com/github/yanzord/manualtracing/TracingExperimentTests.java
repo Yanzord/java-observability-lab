@@ -17,6 +17,9 @@ import io.opentelemetry.sdk.trace.export.SpanExporter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -39,6 +42,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+@ExtendWith(OutputCaptureExtension.class)
 class TracingExperimentTests {
 
     private final List<SpanData> exportedSpans = new ArrayList<>();
@@ -49,11 +53,12 @@ class TracingExperimentTests {
 
     @BeforeEach
     void setUp() {
+        var inspectingExporter = new InspectingSpanExporter();
         SpanExporter exporter = new SpanExporter() {
             @Override
             public CompletableResultCode export(Collection<SpanData> spans) {
                 exportedSpans.addAll(spans);
-                return CompletableResultCode.ofSuccess();
+                return inspectingExporter.export(spans);
             }
 
             @Override
@@ -81,7 +86,7 @@ class TracingExperimentTests {
     }
 
     @Test
-    void requestCreatesOrderAndExportsRelatedSpans() throws Exception {
+    void requestCreatesOrderAndExportsRelatedSpans(CapturedOutput output) throws Exception {
         when(repository.saveAndFlush(any(Order.class))).thenAnswer(invocation -> {
             Order order = invocation.getArgument(0);
             ReflectionTestUtils.setField(order, "id", 42L);
@@ -121,10 +126,13 @@ class TracingExperimentTests {
         assertEquals(4, exportedSpans.stream().map(SpanData::getSpanId).distinct().count());
         assertTrue(exportedSpans.stream().allMatch(span -> span.getStatus().getStatusCode() == StatusCode.UNSET));
         assertEquals(previousSpanContext, Span.current().getSpanContext());
+        assertTrue(output.getOut().contains("parentSpanId=" + order.getSpanId()));
+        assertTrue(output.getOut().contains("payment-approved"));
+        assertTrue(output.getOut().contains("order.id=42"));
     }
 
     @Test
-    void persistenceFailureEndsSpansAndRestoresContext() {
+    void persistenceFailureEndsSpansAndRestoresContext(CapturedOutput output) {
         var failure = new DataAccessResourceFailureException("Database unavailable");
         when(repository.saveAndFlush(any(Order.class))).thenThrow(failure);
         var previousSpanContext = Span.current().getSpanContext();
@@ -154,6 +162,9 @@ class TracingExperimentTests {
         assertTrue(exportedSpans.get(2).getEvents().isEmpty());
         assertTrue(exportedSpans.get(3).getEvents().isEmpty());
         assertEquals(previousSpanContext, Span.current().getSpanContext());
+        assertTrue(output.getOut().contains("statusCode=ERROR"));
+        assertTrue(output.getOut().contains("exception.message=Database unavailable"));
+        assertTrue(output.getOut().contains("exception.stacktrace="));
     }
 
 }
