@@ -93,7 +93,8 @@ headers are extracted. Exceptions propagate through Spring MVC's default error
 handling. Failed persistence records an exception and sets error status.
 
 The SDK pipeline remains `OpenTelemetrySdk` → `SdkTracerProvider` → `Tracer`
-→ `Span` → `SimpleSpanProcessor` → `InspectingSpanExporter`. No explicit `Resource`
+→ `Span` → two `SimpleSpanProcessor` instances, exporting through
+`InspectingSpanExporter` and `OtlpHttpSpanExporter`. No explicit `Resource`
 or `service.name` is configured; the tracer name identifies instrumentation scope.
 
 Earlier experiments established that creating a span does not make it current,
@@ -102,7 +103,7 @@ the previous context, and ending the span triggers export separately.
 
 Validation:
 
-- `./gradlew test` with `.env` exported and PostgreSQL running: four tests passed.
+- `./gradlew test` with `.env` exported, PostgreSQL and Collector running: six tests passed.
 - Real HTTP POST returned 201; SQL confirmed the generated ID and creation date.
 - Logs showed all four spans sharing a trace ID.
 - Docker build and Compose startup passed; an HTTP POST to the container returned
@@ -154,6 +155,27 @@ including output capture checks for parent IDs, approval events, order IDs,
 error status, and exception details. Database integration output also uses the
 new exporter. This is a local learning exporter, not an OTLP implementation.
 
+The OTLP experiment adds the approved official `opentelemetry-exporter-otlp`
+dependency, with its version managed by Spring Boot, and a second processor for
+`OtlpHttpSpanExporter`. The local inspection output remains available. Spring
+explicitly resolves `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` into the manual SDK
+builder, defaulting to `http://localhost:4318/v1/traces`. Compose uses
+`http://collector:4318/v1/traces`.
+
+A minimal Collector (0.162.0) was approved as this experiment's receiver. Its
+traces pipeline connects OTLP HTTP to the detailed `debug` exporter, with no
+processors, persistent storage, or UI. The receiver binds port 4318 inside its
+container; the published host port is localhost-only. No automatic
+instrumentation was introduced. `SimpleSpanProcessor` does not batch; HTTP
+export completes asynchronously.
+
+Validation: six tests passed, including a temporary JDK HTTP receiver verifying
+POST/Protobuf delivery and a rejected export (HTTP 400). Docker build passed;
+a real POST returned 201, and the Collector decoded all four spans with matching
+trace/span/parent IDs, `order.id`, and `payment-approved`. All three Compose
+services were left running. Root parent ID is zero in local inspection but empty
+in the Collector output. Service metadata remains `unknown_service:java`.
+
 ## Completed Milestones
 
 - [x] Create the Spring Boot project
@@ -170,8 +192,8 @@ new exporter. This is a local learning exporter, not an OTLP implementation.
 - [x] Record exceptions
 - [x] Set span status
 - [x] Inspect exported spans
-- [ ] Configure OTLP export
-- [ ] Introduce OpenTelemetry Collector
+- [x] Configure OTLP export
+- [x] Introduce OpenTelemetry Collector
 - [ ] Visualize traces in a tracing backend
 
 ## Concepts to Learn
@@ -342,11 +364,11 @@ The backend should be selected only when this stage is reached.
 
 ## Current Focus
 
-Review the full inspection output and reconstruct the trace from parent IDs,
-then explore OTLP export. Understand how completed `SpanData` is serialized and
-sent to an endpoint rather than printed locally. Propose the required exporter
-dependency and select a receiver before implementation. Keep the domain limited
-to ID and creation date.
+Review OTLP delivery and the minimal Collector configuration. Explain the
+receiver, debug exporter, and traces pipeline before adding more components.
+Compare both log outputs and note the default `unknown_service:java` resource.
+Select a tracing backend only after the Collector's role is understood.
+Keep the domain limited to ID and creation date.
 
 Do not implement the next experiment until explicitly requested.
 

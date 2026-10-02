@@ -3,12 +3,22 @@ services:
     build: .
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/manual_tracing
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://collector:4318/v1/traces
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
+      collector:
+        condition: service_started
+  collector:
+    image: otel/opentelemetry-collector:0.162.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:4318:4318"
   postgres:
     image: postgres:17
     environment:

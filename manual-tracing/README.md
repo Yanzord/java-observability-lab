@@ -8,7 +8,7 @@ Requires Docker Compose. Running or testing outside Docker also requires Java 21
 Run commands from this directory. If `.env` does not exist, create it with a
 `POSTGRES_PASSWORD` variable containing a local password. Environment files and
 their variants are ignored by Git.
-Compose reads `.env` automatically. Build and start the application and database:
+Compose reads `.env` automatically. Build and start the application, database, and Collector:
 
 ```bash
 docker compose up --build -d
@@ -23,11 +23,11 @@ uses `localhost` when running outside Docker.
 ### Run locally or in IntelliJ
 
 If the application container is running, stop it to free port 8080. Then start
-only PostgreSQL and export the environment before running Gradle:
+PostgreSQL and the Collector and export the environment before running Gradle:
 
 ```bash
 docker compose stop app
-docker compose up -d --wait postgres
+docker compose up -d --wait postgres collector
 set -a
 source .env
 set +a
@@ -117,6 +117,36 @@ docker compose up --build -d app
 docker compose logs -f app
 ```
 
+## OTLP export
+
+The SDK has two `SimpleSpanProcessor` instances: one for local inspection and
+one for `OtlpHttpSpanExporter`. The official `opentelemetry-exporter-otlp`
+dependency serializes completed spans as Protobuf and sends HTTP POST requests
+to `/v1/traces`. This is telemetry traffic, separate from `POST /orders`.
+The processor does not batch spans; the HTTP exporter completes sends asynchronously.
+
+The endpoint is read explicitly through Spring's configuration into the manual
+SDK builder. Set `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` to override the default
+`http://localhost:4318/v1/traces`. Compose sets
+`http://collector:4318/v1/traces`, using its service DNS name.
+
+`collector-config.yaml` defines an OTLP HTTP receiver on port 4318 and a detailed
+`debug` exporter. The traces pipeline connects the two. There are no Collector
+processors, external tracing backend, or automatic instrumentation. The Collector
+prints received spans but does not provide persistent trace storage or a UI.
+
+```bash
+docker compose up --build -d
+curl -i -X POST http://localhost:8080/orders
+docker compose logs -f collector
+```
+
+Compare the Collector's trace IDs, parent IDs, span names, attributes, events,
+and status with `docker compose logs app`. The IDs should match: serialization
+and transmission do not create a new trace or change parent relationships.
+A failed OTLP export is a telemetry delivery failure, separate from the result
+of creating an order; the exporter reports it through its export result and logs.
+
 ## Test
 
 With PostgreSQL running and the environment loaded as above:
@@ -126,7 +156,9 @@ With PostgreSQL running and the environment loaded as above:
 ```
 
 Tests cover HTTP creation and real persistence, exported span relationships,
-and span cleanup when persistence fails. The database test rolls back its data.
+and span cleanup when persistence fails. HTTP transport tests use a temporary
+JDK HTTP server to verify Protobuf delivery and rejection handling, without
+additional test dependencies. The database test rolls back its data.
 
 To inspect persisted orders:
 

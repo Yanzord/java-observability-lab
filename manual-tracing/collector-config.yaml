@@ -1,0 +1,17 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+    sampling_initial: 100
+    sampling_thereafter: 1
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
