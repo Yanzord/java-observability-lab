@@ -72,7 +72,11 @@ or extraction of incoming trace headers.
 
 Inspect the application logs for four exported spans sharing a trace ID. Since
 export occurs when each span ends, child spans appear before their parents.
-Attributes, events, exception recording, and span status are later experiments.
+After persistence, `create-order` and `persist-order` include the numeric custom
+attribute `order.id`. Span names remain stable across requests. Payment and
+request spans do not include this attribute. Inspect the exporter output for
+`{order.id=...}` alongside the tracing identifiers.
+Events, exception recording, and span status are later experiments.
 Exceptions currently propagate through Spring MVC's default error handling.
 
 ## Test

@@ -6,6 +6,7 @@ import com.github.yanzord.manualtracing.order.OrderRepository;
 import com.github.yanzord.manualtracing.order.OrderService;
 import com.github.yanzord.manualtracing.payment.PaymentService;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.ArrayList;
@@ -79,7 +81,11 @@ class TracingExperimentTests {
 
     @Test
     void requestCreatesOrderAndExportsRelatedSpans() throws Exception {
-        when(repository.saveAndFlush(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(repository.saveAndFlush(any(Order.class))).thenAnswer(invocation -> {
+            Order order = invocation.getArgument(0);
+            ReflectionTestUtils.setField(order, "id", 42L);
+            return order;
+        });
         var previousSpanContext = Span.current().getSpanContext();
 
         mockMvc.perform(post("/orders"))
@@ -98,6 +104,10 @@ class TracingExperimentTests {
         assertEquals(request.getSpanId(), order.getParentSpanId());
         assertEquals(order.getSpanId(), payment.getParentSpanId());
         assertEquals(order.getSpanId(), persistence.getParentSpanId());
+        assertEquals(42L, order.getAttributes().get(AttributeKey.longKey("order.id")));
+        assertEquals(42L, persistence.getAttributes().get(AttributeKey.longKey("order.id")));
+        assertTrue(payment.getAttributes().isEmpty());
+        assertTrue(request.getAttributes().isEmpty());
         assertTrue(exportedSpans.stream().allMatch(span -> span.getTraceId().equals(request.getTraceId())));
         assertEquals(4, exportedSpans.stream().map(SpanData::getSpanId).distinct().count());
         assertEquals(previousSpanContext, Span.current().getSpanContext());
@@ -113,6 +123,7 @@ class TracingExperimentTests {
 
         assertEquals(List.of("process-payment", "persist-order", "create-order", "POST /orders"),
                 exportedSpans.stream().map(SpanData::getName).toList());
+        assertTrue(exportedSpans.stream().allMatch(span -> span.getAttributes().isEmpty()));
         assertEquals(previousSpanContext, Span.current().getSpanContext());
     }
 

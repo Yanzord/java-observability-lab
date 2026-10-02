@@ -116,6 +116,13 @@ exported `SpanData` to validate relationships. Both Compose services were left
 running for further experimentation. The application container uses UTC by
 default; `creationDate` reflects the runtime's local timezone without an offset.
 
+The attributes experiment adds the custom numeric `order.id` attribute to
+`create-order` and `persist-order` after successful persistence. Span names stay
+stable. Payment and request spans remain without attributes. On persistence
+failure, no order ID is attached. Four tests passed with assertions on exported
+attribute values, and the integration test logs confirmed the persisted ID.
+Rebuild the application image to observe these changes through Compose.
+
 ## Completed Milestones
 
 - [x] Create the Spring Boot project
@@ -127,7 +134,7 @@ default; `creationDate` reflects the runtime's local timezone without an offset.
 - [x] Understand OpenTelemetry `Context`
 - [x] Create parent/child spans
 - [x] Trace POST /orders with dummy payment and PostgreSQL persistence
-- [ ] Add span attributes
+- [x] Add span attributes
 - [ ] Add span events
 - [ ] Record exceptions
 - [ ] Set span status
@@ -304,9 +311,9 @@ The backend should be selected only when this stage is reached.
 
 ## Current Focus
 
-Review traces from real `POST /orders` requests, then add span attributes.
-Explore how attributes describe an operation without changing its stable name
-or parent/child relationships. Keep the domain limited to ID and creation date.
+Review `order.id` in exported spans from `POST /orders`, then explore span events
+to represent a timestamped occurrence within an operation. Keep the domain
+limited to ID and creation date.
 
 Do not implement the next experiment until explicitly requested.
 

@@ -28,7 +28,10 @@ public class OrderService {
             paymentService.processPayment();
             Span persistenceSpan = tracer.spanBuilder("persist-order").startSpan();
             try (Scope persistenceScope = persistenceSpan.makeCurrent()) {
-                return repository.saveAndFlush(order);
+                Order savedOrder = repository.saveAndFlush(order);
+                persistenceSpan.setAttribute("order.id", savedOrder.getId());
+                span.setAttribute("order.id", savedOrder.getId());
+                return savedOrder;
             } finally {
                 persistenceSpan.end();
             }
