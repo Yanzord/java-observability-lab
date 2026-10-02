@@ -136,10 +136,17 @@ The exception experiment catches `RuntimeException` around persistence, calls
 `persistenceSpan.recordException(exception)`, and rethrows the same exception.
 The `finally` block still ends the span. Recording adds a timestamped `exception`
 event containing type, message, and stack trace; it does not change the status.
-Four tests passed, including checks on event contents and timestamp, unchanged
-exception propagation, and status `UNSET`. Only the persistence span records the
+Tests check event contents and timestamp and unchanged exception propagation.
+Only the persistence span records the
 exception; the enclosing order and request spans do not duplicate the event.
 The current logging exporter does not display exception events in its summary.
+
+The status experiment explicitly sets `StatusCode.ERROR` in the persistence
+catch block, separately from exception recording. Success keeps the default
+`UNSET`; no explicit `OK` is set. Four tests passed, verifying `ERROR` only on
+failed persistence, `UNSET` on successful spans, and no automatic propagation
+of status to parent spans. Payment, order, and request remain `UNSET` in the
+failure experiment. The exporter summary omits status as well as events.
 
 ## Completed Milestones
 
@@ -155,7 +162,7 @@ The current logging exporter does not display exception events in its summary.
 - [x] Add span attributes
 - [x] Add span events
 - [x] Record exceptions
-- [ ] Set span status
+- [x] Set span status
 - [ ] Inspect exported spans
 - [ ] Configure OTLP export
 - [ ] Introduce OpenTelemetry Collector
@@ -329,9 +336,10 @@ The backend should be selected only when this stage is reached.
 
 ## Current Focus
 
-Review the recorded exception event and unchanged propagation, then explore
-span status. Compare exception details with explicit `StatusCode.ERROR` and
-understand why recording an exception leaves the status `UNSET`.
+Review the distinction between exception recording and span status, then
+inspect complete exported spans. The current logging summary omits parent IDs,
+events, and status; select a small way to inspect these fields without hiding
+the explicit SDK pipeline or adding automatic instrumentation.
 Keep the domain limited to ID and creation date.
 
 Do not implement the next experiment until explicitly requested.

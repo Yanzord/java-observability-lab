@@ -119,6 +119,7 @@ class TracingExperimentTests {
         assertTrue(request.getAttributes().isEmpty());
         assertTrue(exportedSpans.stream().allMatch(span -> span.getTraceId().equals(request.getTraceId())));
         assertEquals(4, exportedSpans.stream().map(SpanData::getSpanId).distinct().count());
+        assertTrue(exportedSpans.stream().allMatch(span -> span.getStatus().getStatusCode() == StatusCode.UNSET));
         assertEquals(previousSpanContext, Span.current().getSpanContext());
     }
 
@@ -146,7 +147,10 @@ class TracingExperimentTests {
                 .contains("DataAccessResourceFailureException: Database unavailable"));
         assertTrue(exceptionEvent.getEpochNanos() >= persistence.getStartEpochNanos());
         assertTrue(exceptionEvent.getEpochNanos() <= persistence.getEndEpochNanos());
-        assertEquals(StatusCode.UNSET, persistence.getStatus().getStatusCode());
+        assertEquals(StatusCode.ERROR, persistence.getStatus().getStatusCode());
+        assertEquals(StatusCode.UNSET, exportedSpans.get(0).getStatus().getStatusCode());
+        assertEquals(StatusCode.UNSET, exportedSpans.get(2).getStatus().getStatusCode());
+        assertEquals(StatusCode.UNSET, exportedSpans.get(3).getStatus().getStatusCode());
         assertTrue(exportedSpans.get(2).getEvents().isEmpty());
         assertTrue(exportedSpans.get(3).getEvents().isEmpty());
         assertEquals(previousSpanContext, Span.current().getSpanContext());

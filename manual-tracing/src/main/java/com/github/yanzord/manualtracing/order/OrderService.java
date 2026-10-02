@@ -2,6 +2,7 @@ package com.github.yanzord.manualtracing.order;
 
 import com.github.yanzord.manualtracing.payment.PaymentService;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class OrderService {
                 return savedOrder;
             } catch (RuntimeException exception) {
                 persistenceSpan.recordException(exception);
+                persistenceSpan.setStatus(StatusCode.ERROR);
                 throw exception;
             } finally {
                 persistenceSpan.end();
