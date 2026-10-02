@@ -80,8 +80,15 @@ The `process-payment` span includes a timestamped `payment-approved` event after
 dummy approval. This is separate from the application log message. The logging
 exporter summary does not display events; tests inspect exported span data to
 verify the event and its timestamp. The event remains recorded even if subsequent
-persistence fails. Exception recording and span status are later experiments.
-Exceptions currently propagate through Spring MVC's default error handling.
+persistence fails.
+
+If persistence throws a runtime exception, `persist-order` records it with
+`recordException()` before rethrowing the same exception. Exported span data
+includes an `exception` event with type, message, stack trace, and timestamp.
+The exporter summary does not display this event; the failure test inspects it.
+The order and request spans do not duplicate the event. Status remains `UNSET`;
+explicit error status is the next experiment. Exceptions continue to propagate
+through Spring MVC's default error handling.
 
 ## Test
 

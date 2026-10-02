@@ -32,6 +32,9 @@ public class OrderService {
                 persistenceSpan.setAttribute("order.id", savedOrder.getId());
                 span.setAttribute("order.id", savedOrder.getId());
                 return savedOrder;
+            } catch (RuntimeException exception) {
+                persistenceSpan.recordException(exception);
+                throw exception;
             } finally {
                 persistenceSpan.end();
             }

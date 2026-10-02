@@ -11,6 +11,7 @@ import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.data.SpanData;
+import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
 import org.junit.jupiter.api.AfterEach;
@@ -133,6 +134,21 @@ class TracingExperimentTests {
                 exportedSpans.stream().map(SpanData::getName).toList());
         assertTrue(exportedSpans.stream().allMatch(span -> span.getAttributes().isEmpty()));
         assertEquals("payment-approved", exportedSpans.get(0).getEvents().get(0).getName());
+        SpanData persistence = exportedSpans.get(1);
+        assertEquals(1, persistence.getEvents().size());
+        var exceptionEvent = persistence.getEvents().get(0);
+        assertEquals("exception", exceptionEvent.getName());
+        assertEquals(DataAccessResourceFailureException.class.getName(),
+                exceptionEvent.getAttributes().get(AttributeKey.stringKey("exception.type")));
+        assertEquals("Database unavailable",
+                exceptionEvent.getAttributes().get(AttributeKey.stringKey("exception.message")));
+        assertTrue(exceptionEvent.getAttributes().get(AttributeKey.stringKey("exception.stacktrace"))
+                .contains("DataAccessResourceFailureException: Database unavailable"));
+        assertTrue(exceptionEvent.getEpochNanos() >= persistence.getStartEpochNanos());
+        assertTrue(exceptionEvent.getEpochNanos() <= persistence.getEndEpochNanos());
+        assertEquals(StatusCode.UNSET, persistence.getStatus().getStatusCode());
+        assertTrue(exportedSpans.get(2).getEvents().isEmpty());
+        assertTrue(exportedSpans.get(3).getEvents().isEmpty());
         assertEquals(previousSpanContext, Span.current().getSpanContext());
     }
 
