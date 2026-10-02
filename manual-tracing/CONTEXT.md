@@ -123,6 +123,15 @@ failure, no order ID is attached. Four tests passed with assertions on exported
 attribute values, and the integration test logs confirmed the persisted ID.
 Rebuild the application image to observe these changes through Compose.
 
+The events experiment adds `payment-approved` to `process-payment` immediately
+after dummy approval. Events represent timestamped occurrences within a span;
+attributes describe the operation. The existing application log is separate
+from the span event. Four tests passed, including assertions that the event is
+attached only to the payment span and its timestamp falls within the span's
+lifetime. Approval remains recorded if subsequent persistence fails.
+The logging exporter summary does not display events; tests inspect exported
+`SpanData.getEvents()` to verify them. No exporter configuration was changed.
+
 ## Completed Milestones
 
 - [x] Create the Spring Boot project
@@ -135,7 +144,7 @@ Rebuild the application image to observe these changes through Compose.
 - [x] Create parent/child spans
 - [x] Trace POST /orders with dummy payment and PostgreSQL persistence
 - [x] Add span attributes
-- [ ] Add span events
+- [x] Add span events
 - [ ] Record exceptions
 - [ ] Set span status
 - [ ] Inspect exported spans
@@ -311,9 +320,9 @@ The backend should be selected only when this stage is reached.
 
 ## Current Focus
 
-Review `order.id` in exported spans from `POST /orders`, then explore span events
-to represent a timestamped occurrence within an operation. Keep the domain
-limited to ID and creation date.
+Review the `payment-approved` event and its distinction from attributes and
+application logs, then explore exception recording on persistence failure.
+Keep the domain limited to ID and creation date.
 
 Do not implement the next experiment until explicitly requested.
 

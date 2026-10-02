@@ -76,7 +76,11 @@ After persistence, `create-order` and `persist-order` include the numeric custom
 attribute `order.id`. Span names remain stable across requests. Payment and
 request spans do not include this attribute. Inspect the exporter output for
 `{order.id=...}` alongside the tracing identifiers.
-Events, exception recording, and span status are later experiments.
+The `process-payment` span includes a timestamped `payment-approved` event after
+dummy approval. This is separate from the application log message. The logging
+exporter summary does not display events; tests inspect exported span data to
+verify the event and its timestamp. The event remains recorded even if subsequent
+persistence fails. Exception recording and span status are later experiments.
 Exceptions currently propagate through Spring MVC's default error handling.
 
 ## Test

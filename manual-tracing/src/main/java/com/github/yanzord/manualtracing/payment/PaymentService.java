@@ -22,6 +22,7 @@ public class PaymentService {
         Span span = tracer.spanBuilder("process-payment").startSpan();
         try (Scope scope = span.makeCurrent()) {
             logger.info("Dummy payment approved");
+            span.addEvent("payment-approved");
         } finally {
             span.end();
         }

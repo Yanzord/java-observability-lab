@@ -107,6 +107,14 @@ class TracingExperimentTests {
         assertEquals(42L, order.getAttributes().get(AttributeKey.longKey("order.id")));
         assertEquals(42L, persistence.getAttributes().get(AttributeKey.longKey("order.id")));
         assertTrue(payment.getAttributes().isEmpty());
+        assertEquals(1, payment.getEvents().size());
+        var approval = payment.getEvents().get(0);
+        assertEquals("payment-approved", approval.getName());
+        assertTrue(approval.getEpochNanos() >= payment.getStartEpochNanos());
+        assertTrue(approval.getEpochNanos() <= payment.getEndEpochNanos());
+        assertTrue(persistence.getEvents().isEmpty());
+        assertTrue(order.getEvents().isEmpty());
+        assertTrue(request.getEvents().isEmpty());
         assertTrue(request.getAttributes().isEmpty());
         assertTrue(exportedSpans.stream().allMatch(span -> span.getTraceId().equals(request.getTraceId())));
         assertEquals(4, exportedSpans.stream().map(SpanData::getSpanId).distinct().count());
@@ -124,6 +132,7 @@ class TracingExperimentTests {
         assertEquals(List.of("process-payment", "persist-order", "create-order", "POST /orders"),
                 exportedSpans.stream().map(SpanData::getName).toList());
         assertTrue(exportedSpans.stream().allMatch(span -> span.getAttributes().isEmpty()));
+        assertEquals("payment-approved", exportedSpans.get(0).getEvents().get(0).getName());
         assertEquals(previousSpanContext, Span.current().getSpanContext());
     }
 
