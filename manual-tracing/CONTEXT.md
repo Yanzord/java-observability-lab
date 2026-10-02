@@ -82,8 +82,8 @@ The Compose `app` service builds the JAR in a Java 21 JDK stage and runs it in
 a Java 21 JRE stage, publishing localhost port 8080. It waits for PostgreSQL to
 be healthy and overrides the datasource URL to use the `postgres` service name.
 `.dockerignore` excludes environment files and local build artifacts.
-Use `docker compose up --build -d` for both services, or start only `postgres`
-when running through Gradle or IntelliJ. See `README.md` for all commands.
+Use `docker compose up --build -d` for the full stack, or start `postgres` and
+`collector` when running through Gradle or IntelliJ (Tempo starts as a dependency). See `README.md` for all commands.
 
 Instrumentation remains explicit, with constructor-injected `Tracer`,
 try-with-resources scopes, and spans ended in `finally`. The request span covers
@@ -164,8 +164,8 @@ builder, defaulting to `http://localhost:4318/v1/traces`. Compose uses
 `http://collector:4318/v1/traces`.
 
 A minimal Collector (0.162.0) was approved as this experiment's receiver. Its
-traces pipeline connects OTLP HTTP to the detailed `debug` exporter, with no
-processors, persistent storage, or UI. The receiver binds port 4318 inside its
+traces pipeline connects OTLP HTTP to the detailed `debug` exporter and forwards
+spans to Tempo through `otlp_http/tempo`, without processors. The receiver binds port 4318 inside its
 container; the published host port is localhost-only. No automatic
 instrumentation was introduced. `SimpleSpanProcessor` does not batch; HTTP
 export completes asynchronously.
@@ -173,8 +173,7 @@ export completes asynchronously.
 Validation: six tests passed, including a temporary JDK HTTP receiver verifying
 POST/Protobuf delivery and a rejected export (HTTP 400). Docker build passed;
 a real POST returned 201, and the Collector decoded all four spans with matching
-trace/span/parent IDs, `order.id`, and `payment-approved`. All three Compose
-services were left running. Root parent ID is zero in local inspection but empty
+trace/span/parent IDs, `order.id`, and `payment-approved`. The Compose stack is running. Root parent ID is zero in local inspection but empty
 in the Collector output. Service metadata is now `manual-tracing`.
 
 The resource experiment merges `Resource.getDefault()` with an explicit
@@ -184,6 +183,21 @@ Six tests passed, checking that the configured service name is exported and SDK
 name/language attributes are preserved. Docker build passed; a real POST returned
 201, and all four Collector spans carried `service.name=manual-tracing` with SDK
 metadata intact. Collector log metadata still uses its own service name `otelcol`.
+
+The visualization experiment adds Tempo 3.1.0 in monolithic mode and Grafana
+13.1.3. The Collector forwards OTLP HTTP to Tempo on port 4318; Grafana queries
+Tempo on port 3200 using a provisioned datasource. Tempo keeps local WAL and
+blocks in `tempo-data`; Grafana uses `grafana-data`. Grafana is available at
+localhost:3000 with anonymous Viewer access. All published ports bind localhost.
+No Java changes or dependencies were introduced.
+
+Validation: all five services started; Tempo readiness and Grafana health passed.
+A real POST returned 201. TraceQL search found its trace under
+`resource.service.name = "manual-tracing"`. Direct Tempo retrieval and Grafana's
+datasource proxy both returned all four spans with correct parents, `order.id`,
+and `payment-approved`. Search visibility took about 30 seconds. Restart the
+Collector after editing its mounted configuration. See README for Explore steps.
+Java tests were not rerun for this infrastructure-only milestone.
 
 ## Completed Milestones
 
@@ -204,7 +218,7 @@ metadata intact. Collector log metadata still uses its own service name `otelcol
 - [x] Configure OTLP export
 - [x] Introduce OpenTelemetry Collector
 - [x] Identify the telemetry service through Resource
-- [ ] Visualize traces in a tracing backend
+- [x] Visualize traces in a tracing backend
 
 ## Concepts to Learn
 
@@ -374,10 +388,11 @@ The backend should be selected only when this stage is reached.
 
 ## Current Focus
 
-Review the distinction between service resource, instrumentation scope, and
-operation attributes. Then select a tracing backend to visualize the existing
-manual traces through the Collector. Keep local inspection available and retain
-explicit instrumentation. Keep the domain limited to ID and creation date.
+Inspect successful traces in Grafana Explore: parent relationships, timeline,
+resource attributes, order attributes, and payment events. The initial learning
+sequence is implemented and validated. The recommended next experiment is to
+compare `SimpleSpanProcessor` and `BatchSpanProcessor`, after reviewing the UI.
+Retain manual instrumentation and the minimal domain.
 
 Do not implement the next experiment until explicitly requested.
 

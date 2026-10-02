@@ -5,6 +5,8 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 exporters:
+  otlp_http/tempo:
+    endpoint: http://tempo:4318
   debug:
     verbosity: detailed
     sampling_initial: 100
@@ -14,4 +16,4 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [debug]
+      exporters: [debug, otlp_http/tempo]

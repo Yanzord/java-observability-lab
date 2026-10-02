@@ -8,7 +8,7 @@ Requires Docker Compose. Running or testing outside Docker also requires Java 21
 Run commands from this directory. If `.env` does not exist, create it with a
 `POSTGRES_PASSWORD` variable containing a local password. Environment files and
 their variants are ignored by Git.
-Compose reads `.env` automatically. Build and start the application, database, and Collector:
+Compose reads `.env` automatically. Build and start the application, PostgreSQL, Collector, Tempo, and Grafana:
 
 ```bash
 docker compose up --build -d
@@ -110,7 +110,7 @@ failure test validates this output without disrupting the running database:
 
 The exporter logs synchronously through `SimpleSpanProcessor` when a span ends.
 It has no network connection or buffered batch. This is a local inspection
-exporter; OTLP export is a later step. Rebuild the image after source changes:
+exporter, running alongside the OTLP exporter. Rebuild the image after source changes:
 
 ```bash
 docker compose up --build -d app
@@ -131,9 +131,10 @@ SDK builder. Set `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` to override the default
 `http://collector:4318/v1/traces`, using its service DNS name.
 
 `collector-config.yaml` defines an OTLP HTTP receiver on port 4318 and a detailed
-`debug` exporter. The traces pipeline connects the two. There are no Collector
-processors, external tracing backend, or automatic instrumentation. The Collector
-prints received spans but does not provide persistent trace storage or a UI.
+`debug` exporter plus `otlp_http/tempo`. The traces pipeline prints received spans
+and forwards them to Tempo at `http://tempo:4318`. Tempo stores traces; Grafana
+queries Tempo through its HTTP API on port 3200. The Collector has no processors.
+Instrumentation remains manual.
 
 ```bash
 docker compose up --build -d
@@ -146,6 +147,55 @@ and status with `docker compose logs app`. The IDs should match: serialization
 and transmission do not create a new trace or change parent relationships.
 A failed OTLP export is a telemetry delivery failure, separate from the result
 of creating an order; the exporter reports it through its export result and logs.
+
+## Visualize traces in Grafana
+
+The Compose pipeline is:
+
+```text
+Application → OTLP HTTP → Collector → OTLP HTTP → Tempo
+                                                   ↑ queries
+                                                Grafana
+```
+
+Tempo 3.1.0 runs in monolithic mode with local WAL and block storage in the
+`tempo-data` volume. Grafana 13.1.3 uses `grafana-data` and provisions the Tempo
+datasource from `grafana-datasources.yaml`. Ingestion uses port 4318; queries use
+port 3200. Container addresses use Compose service names.
+
+1. Create an order with `curl -i -X POST http://localhost:8080/orders`.
+2. Open <http://localhost:3000>. Anonymous Viewer access is enabled for this lab;
+   the published port is bound to localhost.
+3. Open **Explore**, select **Tempo**, and select the **TraceQL** query editor.
+4. Use the last 15 minutes and run:
+
+   ```traceql
+   { resource.service.name = "manual-tracing" }
+   ```
+
+5. Open a result to inspect the four-span tree and timeline. Expand
+   `process-payment` to inspect `payment-approved`, and `persist-order` to inspect
+   `order.id`. Resource attributes identify the service; span attributes describe
+   individual operations.
+
+Search may take some time to include a newly ingested trace; validation observed
+about 30 seconds. Refresh the query if the first search is empty. Filter a
+specific order by replacing `17` with the returned order ID:
+
+```traceql
+{ resource.service.name = "manual-tracing" && span.order.id = 17 }
+```
+
+Mounted configuration changes require restarting the affected service. For
+example, after editing the Collector configuration:
+
+```bash
+docker compose restart collector
+```
+
+Validation queried the same complete trace directly through Tempo and through
+Grafana's datasource proxy, checking all four spans, parent relationships,
+`order.id`, and the approval event. This stage changes infrastructure only.
 
 ## Service identity
 
