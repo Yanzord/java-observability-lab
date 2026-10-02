@@ -62,7 +62,8 @@ The Spring Boot project has been created.
 
 A minimal OpenTelemetry SDK configuration was implemented previously.
 
-A `CommandLineRunner` now creates `first-experiment` and ends it in `finally`.
+A `CommandLineRunner` now creates `scope-experiment`, compares `Span.current()`
+before, inside, and after `makeCurrent()`, and ends the span in `finally`.
 The first execution failed before the runner because no datasource was configured.
 The `tracing-experiment` profile disables datasource auto-configuration for this
 database-free experiment. Run it with:
@@ -73,7 +74,17 @@ The user validated successful execution and span export in the terminal.
 The pipeline is `OpenTelemetrySdk` → `SdkTracerProvider` → `Tracer` → `Span`
 → `SimpleSpanProcessor` → `LoggingSpanExporter`.
 The tracer name identifies the instrumentation scope. No explicit `Resource`
-or `service.name` is configured. The experiment does not call `makeCurrent()`.
+or `service.name` is configured.
+
+The scope experiment was validated with
+`SPRING_PROFILES_ACTIVE=tracing-experiment ./gradlew test` (one test passed).
+The captured output confirmed that creation does not make the span current,
+closing the scope restores the previous current span, and the span remains
+recording until `end()` triggers export. With no current valid span, the displayed
+span ID is `0000000000000000`.
+Spans describe measured operations; scopes delimit where a span is current.
+New spans use the current span as their default parent, enabling related
+operations to form a trace. Parent/child relationships have not yet been tested.
 
 ## Completed Milestones
 
@@ -82,7 +93,7 @@ or `service.name` is configured. The experiment does not call `makeCurrent()`.
 - [x] Implement minimal OpenTelemetry SDK configuration
 - [x] Understand the existing tracing pipeline
 - [x] Create the first manual span
-- [ ] Understand `Scope` and the current span
+- [x] Understand `Scope` and the current span
 - [ ] Understand OpenTelemetry `Context`
 - [ ] Create parent/child spans
 - [ ] Add span attributes
@@ -262,11 +273,9 @@ The backend should be selected only when this stage is reached.
 
 ## Current Focus
 
-Understand `Scope` and the current span.
-
-Compare `Span.current()` before, during, and after a scope created with
-`span.makeCurrent()`. Observe that closing the scope restores the previous
-context, while `span.end()` separately ends the span.
+Understand OpenTelemetry `Context`: how it stores the current span and how
+`makeCurrent()` and scope closure attach and restore it for the execution flow.
+Review the scope experiment output before introducing parent/child spans.
 
 Do not implement the next experiment until explicitly requested.
 
