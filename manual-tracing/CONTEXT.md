@@ -62,8 +62,9 @@ The Spring Boot project has been created.
 
 A minimal OpenTelemetry SDK configuration was implemented previously.
 
-A `CommandLineRunner` now creates `scope-experiment`, compares `Span.current()`
-before, inside, and after `makeCurrent()`, and ends the span in `finally`.
+A `CommandLineRunner` now creates `context-experiment`, derives a context with
+`Context.current().with(span)`, and makes that context current inside a scope.
+It compares the stored and current spans and ends the span in `finally`.
 The first execution failed before the runner because no datasource was configured.
 The `tracing-experiment` profile disables datasource auto-configuration for this
 database-free experiment. Run it with:
@@ -86,6 +87,13 @@ Spans describe measured operations; scopes delimit where a span is current.
 New spans use the current span as their default parent, enabling related
 operations to form a trace. Parent/child relationships have not yet been tested.
 
+The context experiment passed the same test command (one test passed).
+Captured output confirmed that `with(span)` leaves the original context unchanged
+and does not change the current context. Closing the scope restores the original
+context, while the derived context still contains the span. `Context` is the
+immutable execution context container; `SpanContext` holds tracing identifiers
+and flags for a span.
+
 ## Completed Milestones
 
 - [x] Create the Spring Boot project
@@ -94,7 +102,7 @@ operations to form a trace. Parent/child relationships have not yet been tested.
 - [x] Understand the existing tracing pipeline
 - [x] Create the first manual span
 - [x] Understand `Scope` and the current span
-- [ ] Understand OpenTelemetry `Context`
+- [x] Understand OpenTelemetry `Context`
 - [ ] Create parent/child spans
 - [ ] Add span attributes
 - [ ] Add span events
@@ -273,9 +281,9 @@ The backend should be selected only when this stage is reached.
 
 ## Current Focus
 
-Understand OpenTelemetry `Context`: how it stores the current span and how
-`makeCurrent()` and scope closure attach and restore it for the execution flow.
-Review the scope experiment output before introducing parent/child spans.
+Review the context experiment output, then explore parent/child spans.
+Observe how a newly created span uses the current span as its default parent,
+shares its trace ID, and has its own span ID.
 
 Do not implement the next experiment until explicitly requested.
 

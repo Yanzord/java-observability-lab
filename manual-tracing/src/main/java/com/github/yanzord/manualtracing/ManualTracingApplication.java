@@ -2,6 +2,7 @@ package com.github.yanzord.manualtracing;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
@@ -18,15 +19,21 @@ public class ManualTracingApplication {
     @Bean
     public CommandLineRunner tracingExperiment(Tracer tracer) {
         return args -> {
-            System.out.println("Before creation: " + Span.current().getSpanContext().getSpanId());
-            Span span = tracer.spanBuilder("scope-experiment").startSpan();
+            Context previousContext = Context.current();
+            System.out.println("Before creation: " + Span.fromContext(previousContext).getSpanContext().getSpanId());
+            Span span = tracer.spanBuilder("context-experiment").startSpan();
             try {
+                Context spanContext = previousContext.with(span);
                 System.out.println("Created span: " + span.getSpanContext().getSpanId());
+                System.out.println("Span in original context: " + Span.fromContext(previousContext).getSpanContext().getSpanId());
+                System.out.println("Span in new context: " + Span.fromContext(spanContext).getSpanContext().getSpanId());
                 System.out.println("Before scope: " + Span.current().getSpanContext().getSpanId());
-                try (Scope scope = span.makeCurrent()) {
+                try (Scope scope = spanContext.makeCurrent()) {
                     System.out.println("Inside scope: " + Span.current().getSpanContext().getSpanId());
                 }
                 System.out.println("After scope: " + Span.current().getSpanContext().getSpanId());
+                System.out.println("Original context restored: " + (Context.current() == previousContext));
+                System.out.println("Span still in new context: " + Span.fromContext(spanContext).getSpanContext().getSpanId());
                 System.out.println("Recording after scope: " + span.isRecording());
             } finally {
                 span.end();
