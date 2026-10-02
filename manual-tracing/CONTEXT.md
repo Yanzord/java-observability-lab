@@ -58,41 +58,63 @@ Do not increase domain complexity unless required by a learning objective.
 
 ## Current Progress
 
-The Spring Boot project has been created.
+The runner experiments have been replaced by a minimal MVC HTTP flow:
 
-A minimal OpenTelemetry SDK configuration was implemented previously.
+```text
+POST /orders (SERVER)
+└── create-order
+    ├── process-payment
+    └── persist-order
+```
 
-A `CommandLineRunner` now creates `context-experiment`, derives a context with
-`Context.current().with(span)`, and makes that context current inside a scope.
-It compares the stored and current spans and ends the span in `finally`.
-The first execution failed before the runner because no datasource was configured.
-The `tracing-experiment` profile disables datasource auto-configuration for this
-database-free experiment. Run it with:
+`order` contains the controller, service, entity, and JPA repository. `payment`
+contains a dummy service that logs approval without external calls or persistence.
+`Order` has only a generated `Long id` and a server-generated `LocalDateTime
+creationDate` (date and time without timezone). POST has no request body and
+returns HTTP 201 with the saved entity. Other CRUD operations are not implemented.
 
-`./gradlew bootRun --args='--spring.profiles.active=tracing-experiment'`
+PostgreSQL 17 runs through `compose.yaml`, bound to localhost port 5432, with
+persistent volume storage. Credentials live in an ignored `.env`; `.env` and all
+`.env.*` variants are excluded from Git. A local `.env` was generated for validation. Hibernate
+uses `ddl-auto: update` for the lab. No dependency was added. The obsolete
+`tracing-experiment` profile was removed; database configuration is now required.
+The Compose `app` service builds the JAR in a Java 21 JDK stage and runs it in
+a Java 21 JRE stage, publishing localhost port 8080. It waits for PostgreSQL to
+be healthy and overrides the datasource URL to use the `postgres` service name.
+`.dockerignore` excludes environment files and local build artifacts.
+Use `docker compose up --build -d` for both services, or start only `postgres`
+when running through Gradle or IntelliJ. See `README.md` for all commands.
 
-The user validated successful execution and span export in the terminal.
-The pipeline is `OpenTelemetrySdk` → `SdkTracerProvider` → `Tracer` → `Span`
-→ `SimpleSpanProcessor` → `LoggingSpanExporter`.
-The tracer name identifies the instrumentation scope. No explicit `Resource`
-or `service.name` is configured.
+Instrumentation remains explicit, with constructor-injected `Tracer`,
+try-with-resources scopes, and spans ended in `finally`. The request span covers
+the controller handler, excluding response serialization and the wider servlet
+lifecycle. `persist-order` covers the `saveAndFlush()` call. No incoming trace
+headers are extracted. Exceptions propagate through Spring MVC's default error
+handling; exception recording and error status remain future steps.
 
-The scope experiment was validated with
-`SPRING_PROFILES_ACTIVE=tracing-experiment ./gradlew test` (one test passed).
-The captured output confirmed that creation does not make the span current,
-closing the scope restores the previous current span, and the span remains
-recording until `end()` triggers export. With no current valid span, the displayed
-span ID is `0000000000000000`.
-Spans describe measured operations; scopes delimit where a span is current.
-New spans use the current span as their default parent, enabling related
-operations to form a trace. Parent/child relationships have not yet been tested.
+The SDK pipeline remains `OpenTelemetrySdk` → `SdkTracerProvider` → `Tracer`
+→ `Span` → `SimpleSpanProcessor` → `LoggingSpanExporter`. No explicit `Resource`
+or `service.name` is configured; the tracer name identifies instrumentation scope.
 
-The context experiment passed the same test command (one test passed).
-Captured output confirmed that `with(span)` leaves the original context unchanged
-and does not change the current context. Closing the scope restores the original
-context, while the derived context still contains the span. `Context` is the
-immutable execution context container; `SpanContext` holds tracing identifiers
-and flags for a span.
+Earlier experiments established that creating a span does not make it current,
+`Context.with(span)` creates an immutable derived context, closing a scope restores
+the previous context, and ending the span triggers export separately.
+
+Validation:
+
+- `./gradlew test` with `.env` exported and PostgreSQL running: four tests passed.
+- Real HTTP POST returned 201; SQL confirmed the generated ID and creation date.
+- Logs showed all four spans sharing a trace ID.
+- Docker build and Compose startup passed; an HTTP POST to the container returned
+  201, SQL confirmed persistence, and container logs showed the four related spans.
+- Tests verify exported parent IDs, distinct span IDs, context restoration, and
+  span cleanup on persistence failure. The persistence test clears the JPA cache
+  before reloading from PostgreSQL and rolls back its data.
+
+The logging exporter summary does not display parent span IDs; the tests inspect
+exported `SpanData` to validate relationships. Both Compose services were left
+running for further experimentation. The application container uses UTC by
+default; `creationDate` reflects the runtime's local timezone without an offset.
 
 ## Completed Milestones
 
@@ -103,7 +125,8 @@ and flags for a span.
 - [x] Create the first manual span
 - [x] Understand `Scope` and the current span
 - [x] Understand OpenTelemetry `Context`
-- [ ] Create parent/child spans
+- [x] Create parent/child spans
+- [x] Trace POST /orders with dummy payment and PostgreSQL persistence
 - [ ] Add span attributes
 - [ ] Add span events
 - [ ] Record exceptions
@@ -281,9 +304,9 @@ The backend should be selected only when this stage is reached.
 
 ## Current Focus
 
-Review the context experiment output, then explore parent/child spans.
-Observe how a newly created span uses the current span as its default parent,
-shares its trace ID, and has its own span ID.
+Review traces from real `POST /orders` requests, then add span attributes.
+Explore how attributes describe an operation without changing its stable name
+or parent/child relationships. Keep the domain limited to ID and creation date.
 
 Do not implement the next experiment until explicitly requested.
 

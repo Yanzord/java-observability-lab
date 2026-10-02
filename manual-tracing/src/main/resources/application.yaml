@@ -1,3 +1,11 @@
 spring:
   application:
     name: manual-tracing
+  datasource:
+    url: jdbc:postgresql://localhost:5432/manual_tracing
+    username: manual_tracing
+    password: ${POSTGRES_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
