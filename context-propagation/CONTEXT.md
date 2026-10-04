@@ -42,18 +42,26 @@ propagation while the order span is current on the caller. The worker has no
 valid current span before payment, so payment and order are independent root
 spans with different trace IDs. `Future.get()` waits for payment completion but
 does not propagate context. The executor closes and caller context is restored.
-Explicit thread and remote propagation are not implemented.
+The third experiment captures `Context.current()` on the caller before
+submission and activates it in the worker using `makeCurrent()`. Payment shares
+the order's trace and has the order as its parent. Nested scopes restore the
+worker's original context, including on payment failure; the next task on the
+same thread sees no valid current span. The caller owns the executor. Failures
+are propagated through `ExecutionException`; this experiment does not add
+exception events or error status. Remote propagation is not implemented.
 
-Validation: `./gradlew test run` compiled and executed both experiments
-successfully. Three JUnit tests cover synchronous span relationships, restoration
+Validation: `./gradlew test run` compiled and executed all three experiments
+successfully. Four JUnit tests cover synchronous span relationships, restoration
 of an existing caller, context derivation without activation, scope restoration
-after an exception, and independent executor spans without propagation.
+after an exception, independent executor spans without propagation, and explicit
+propagation with success/failure cleanup on the same reused worker thread.
 
 ## Completed Milestones
 
 - [x] Create the standalone Java/Gradle POC and local span exporter.
 - [x] Validate the synchronous baseline and scope restoration with two tests.
 - [x] Demonstrate and validate context loss across executor threads.
+- [x] Propagate context explicitly and validate cleanup after success and failure.
 
 ## Concepts to Learn
 
@@ -82,14 +90,13 @@ after an exception, and independent executor spans without propagation.
 
 ## Current Focus
 
-Milestone 3: capture `Context.current()` before submitting payment and activate
-it inside the worker. Validate parent identity, failure cleanup, and context
-restoration when the executor thread is reused. Do not implement this milestone
-until explicitly requested.
+Milestone 4: inject trace context into a map carrier and extract it using the
+W3C trace context propagator. Validate remote parent identity and absent or
+invalid trace headers. Do not implement this milestone until explicitly requested.
 
 ## Not Yet In Scope
 
-- Executor propagation and W3C carriers until their respective milestones.
+- W3C carriers until milestone 4.
 - HTTP transport until milestone 5.
 - Baggage, messaging, Kafka, reactive execution, and virtual-thread comparisons.
 - Automatic instrumentation, Java Agent, and Micrometer Tracing.

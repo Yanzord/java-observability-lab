@@ -13,7 +13,8 @@ Requires a Java 21 JDK. Run from this directory:
 ./gradlew test
 ```
 
-The program runs a synchronous baseline followed by an executor experiment,
+The program runs a synchronous baseline followed by executor experiments with
+and without explicit propagation,
 without Spring, a database, network calls, or an observability backend.
 It uses the OpenTelemetry API/SDK 1.62.0 and
 JUnit Jupiter 6.0.3, matching the versions resolved by the existing manual-tracing
@@ -68,8 +69,32 @@ closed, the spans are ended, and the caller's previous context is restored.
 The new test verifies the worker's missing current span, independent root spans,
 different trace IDs, and caller context restoration.
 
-The next milestone will explicitly capture and activate context in the worker.
-Thread propagation and HTTP propagation are not implemented yet.
+## Third experiment: explicit thread propagation
+
+`runWithPropagation` captures `Context.current()` while the order span is current
+on the caller, before submitting work. Inside the worker, `captured.makeCurrent()`
+activates that context. The payment span then inherits the order as its parent.
+Capturing inside the worker would retrieve the worker's context instead.
+
+Compare the exported IDs with the second experiment: payment and order now share
+a trace ID, and payment's parent ID equals the order's span ID. No automatic
+executor instrumentation or task wrapping is used.
+
+The payment scope closes first, restoring the propagated order context. The
+propagated scope then closes, restoring the worker's original context. Span
+ending remains separate and happens in `finally`. A subsequent uninstrumented
+task on the same worker reports no valid current span.
+
+The test exercises successful and failing payment operations on the same
+single-thread executor. It verifies the parent relationship, completed spans,
+preservation of an existing caller context, propagation of the original failure
+through `ExecutionException`, and restoration of the same worker context before
+the thread is reused. The caller owns and closes the executor.
+
+This milestone focuses on context and lifecycle cleanup. A payment failure is
+re-thrown; recording exception events and setting span error status are not added
+to this experiment. The next milestone is W3C injection/extraction through a map
+carrier. Remote and HTTP propagation are not implemented yet.
 
 ## References
 

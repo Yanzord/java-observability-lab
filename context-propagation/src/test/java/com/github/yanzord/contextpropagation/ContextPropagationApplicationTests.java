@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Collection;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -23,6 +25,64 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ContextPropagationApplicationTests {
+
+    @Test
+    void explicitPropagationPreservesParentAndCleansUpReusedWorkerAfterSuccessAndFailure() throws Exception {
+        List<SpanData> spans = new ArrayList<>();
+        var exporter = new InspectingSpanExporter() {
+            @Override
+            public CompletableResultCode export(Collection<SpanData> completedSpans) {
+                spans.addAll(completedSpans);
+                return CompletableResultCode.ofSuccess();
+            }
+        };
+        try (SdkTracerProvider provider = SdkTracerProvider.builder()
+                .addSpanProcessor(SimpleSpanProcessor.create(exporter)).build();
+             var executor = Executors.newSingleThreadExecutor()) {
+            var tracer = provider.get("com.github.yanzord.contextpropagation");
+            Context previous = Context.current();
+            Context workerPrevious = executor.submit(Context::current).get();
+            Thread worker = executor.submit(Thread::currentThread).get();
+            var failure = new IllegalStateException("Payment failed");
+
+            for (boolean fail : List.of(false, true)) {
+                spans.clear();
+                Span caller = tracer.spanBuilder("caller").startSpan();
+                try (Scope scope = caller.makeCurrent()) {
+                    Context callerContext = Context.current();
+                    Runnable operation = () -> {
+                        assertEquals("process-payment", ((ReadableSpan) Span.current()).getName());
+                        if (fail) {
+                            throw failure;
+                        }
+                    };
+                    if (fail) {
+                        ExecutionException exception = assertThrows(ExecutionException.class,
+                                () -> ContextPropagationApplication.runWithPropagation(tracer, executor, operation));
+                        assertSame(failure, exception.getCause());
+                    } else {
+                        ContextPropagationApplication.runWithPropagation(tracer, executor, operation);
+                    }
+
+                    assertSame(callerContext, Context.current());
+                    assertEquals(List.of("process-payment", "create-order"),
+                            spans.stream().map(SpanData::getName).toList());
+                    SpanData payment = spans.get(0);
+                    SpanData order = spans.get(1);
+                    assertEquals(order.getTraceId(), payment.getTraceId());
+                    assertEquals(order.getSpanId(), payment.getParentSpanId());
+                    assertEquals(caller.getSpanContext().getSpanId(), order.getParentSpanId());
+                    assertNotEquals(order.getSpanId(), payment.getSpanId());
+                    assertSame(worker, executor.submit(Thread::currentThread).get());
+                    assertSame(workerPrevious, executor.submit(Context::current).get());
+                    assertFalse(executor.submit(() -> Span.current().getSpanContext().isValid()).get());
+                } finally {
+                    caller.end();
+                }
+                assertSame(previous, Context.current());
+            }
+        }
+    }
 
     @Test
     void executorWithoutPropagationCreatesIndependentRootSpans() throws Exception {

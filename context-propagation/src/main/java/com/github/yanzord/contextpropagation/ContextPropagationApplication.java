@@ -9,6 +9,7 @@ import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class ContextPropagationApplication {
@@ -19,6 +20,37 @@ public class ContextPropagationApplication {
                 .build()) {
             runExperiment(provider.get("com.github.yanzord.contextpropagation"));
             runWithoutPropagation(provider.get("com.github.yanzord.contextpropagation"));
+            try (var executor = Executors.newSingleThreadExecutor()) {
+                runWithPropagation(provider.get("com.github.yanzord.contextpropagation"), executor,
+                        () -> System.out.println("Payment approved"));
+                System.out.println("Reused worker has a valid current span: "
+                        + executor.submit(() -> Span.current().getSpanContext().isValid()).get());
+            }
+        }
+    }
+
+    static void runWithPropagation(Tracer tracer, ExecutorService executor, Runnable paymentOperation)
+            throws InterruptedException, ExecutionException {
+        Span order = tracer.spanBuilder("create-order").startSpan();
+        try (Scope scope = order.makeCurrent()) {
+            Context captured = Context.current();
+            executor.submit(() -> {
+                Context workerPrevious = Context.current();
+                try (Scope propagatedScope = captured.makeCurrent()) {
+                    System.out.println("Propagated order span on worker: "
+                            + Span.current().getSpanContext().getSpanId());
+                    Span payment = tracer.spanBuilder("process-payment").startSpan();
+                    try (Scope paymentScope = payment.makeCurrent()) {
+                        paymentOperation.run();
+                    } finally {
+                        payment.end();
+                    }
+                } finally {
+                    System.out.println("Worker context restored: " + (Context.current() == workerPrevious));
+                }
+            }).get();
+        } finally {
+            order.end();
         }
     }
 
