@@ -14,8 +14,8 @@ Requires a Java 21 JDK. Run from this directory:
 ```
 
 The program runs a synchronous baseline, executor experiments with and without
-explicit propagation, and a W3C map carrier experiment,
-without Spring, a database, network calls, or an observability backend.
+explicit propagation, a W3C map carrier experiment, and a loopback HTTP request,
+without Spring, a database, or an observability backend.
 It uses the OpenTelemetry API/SDK 1.62.0 and
 JUnit Jupiter 6.0.3, matching the versions resolved by the existing manual-tracing
 POC. The Gradle wrapper is also reused from that POC.
@@ -120,8 +120,40 @@ flags and a `tracestate` round trip. Missing, malformed, or zero-ID `traceparent
 values produce a new root payment span, even with an unrelated local span active.
 Both valid and invalid input paths restore the previous context.
 
-The next milestone applies this mechanism to a real Java HTTP client/server.
-HTTP transport is not implemented yet.
+## Fifth experiment: HTTP propagation
+
+`HttpPropagationExperiment` starts a JDK `HttpServer` bound to `127.0.0.1` on an
+ephemeral port and sends a real `POST /payments` using the JDK `HttpClient`.
+The program stops the server and closes its executor and client after use.
+No external service or additional dependency is required.
+
+```text
+create-order (INTERNAL)
+└── POST /payments (CLIENT)
+    └── POST /payments (SERVER)
+        └── process-payment (INTERNAL)
+```
+
+The client makes its request span current before injecting into the HTTP request
+builder. The server extracts from request headers using `getFirst`, which handles
+HTTP header names without case sensitivity, and uses the extracted context as
+the server span's parent. Extraction starts from root to isolate each request.
+Server and payment spans are made current with scopes and ended in `finally`.
+The response is HTTP 200 with body `approved`.
+
+Observe four distinct span IDs in one trace: the server's remote parent is the
+client span, not the order span. This is a real HTTP boundary inside one JVM;
+it demonstrates header transport, not deployment of separate services.
+
+Tests send two instrumented requests through the same server worker, verify the
+entire span tree and separate trace IDs per request, and check restoration of
+caller and worker contexts. Additional real HTTP requests with absent or invalid
+`traceparent` create independent server root spans. Tests collect spans in a
+thread-safe list and wait for server-handler completion before inspecting them.
+
+All five milestones are implemented. Review the differences between thread-local
+activation, thread propagation, W3C serialization, and HTTP transport before
+starting a new learning sequence.
 
 ## References
 

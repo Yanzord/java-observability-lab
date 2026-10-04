@@ -11,10 +11,11 @@ import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.io.IOException;
 
 public class ContextPropagationApplication {
 
-    public static void main(String[] args) throws InterruptedException, ExecutionException {
+    public static void main(String[] args) throws InterruptedException, ExecutionException, IOException {
         try (SdkTracerProvider provider = SdkTracerProvider.builder()
                 .addSpanProcessor(SimpleSpanProcessor.create(new InspectingSpanExporter()))
                 .build()) {
@@ -27,6 +28,7 @@ public class ContextPropagationApplication {
                         + executor.submit(() -> Span.current().getSpanContext().isValid()).get());
             }
             W3CPropagationExperiment.runExperiment(provider.get("com.github.yanzord.contextpropagation"));
+            HttpPropagationExperiment.runExperiment(provider.get("com.github.yanzord.contextpropagation"));
         }
     }
 

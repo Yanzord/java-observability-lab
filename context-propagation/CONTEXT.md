@@ -12,6 +12,7 @@ not extract incoming headers or propagate context between threads.
 - OpenTelemetry API and SDK 1.62.0
 - JUnit Jupiter 6.0.3
 - Local inspecting exporter with `SimpleSpanProcessor`
+- JDK HTTP client and server on loopback
 
 Versions match the existing POC's resolved dependencies. No Spring or external
 infrastructure is needed for the initial execution-context experiments.
@@ -29,6 +30,9 @@ persistence, or additional domain architecture. Introduce one execution boundary
 at a time; add HTTP transport only after carrier propagation is understood.
 
 ## Current Progress
+
+The POC is complete: all five milestones are implemented, validated, and their
+console output has been reviewed. No implementation work remains in this sequence.
 
 A runnable synchronous experiment creates `create-order` and `process-payment`.
 It derives a context with `Context.with(span)`, activates it with `makeCurrent()`,
@@ -55,15 +59,28 @@ extracts from `Context.root()`. The receiver explicitly uses the extracted
 context as payment's parent. Trace identity, flags, and trace state survive the
 carrier round trip; the extracted parent is remote. Missing or invalid
 `traceparent` creates a root span instead of inheriting a current local span.
-This simulates a remote boundary in one JVM. HTTP transport is not implemented.
+This simulates a remote boundary in one JVM.
 
-Validation: `./gradlew test run` compiled and executed all four experiments
-successfully. Six JUnit tests cover synchronous span relationships, restoration
+The fifth experiment starts a JDK HTTP server on `127.0.0.1` with an ephemeral
+port and sends a real HTTP POST with manually injected W3C headers. The server
+extracts from root using a case-insensitive HTTP header getter. The span tree is
+`create-order (INTERNAL) → POST /payments (CLIENT) → POST /payments (SERVER) →
+process-payment (INTERNAL)`. All spans share one trace; the server's parent is
+remote and identifies the client span. The response is HTTP 200 `approved`.
+The server and client run in the same JVM. Resources close after each experiment;
+no external infrastructure or dependencies were added.
+
+Validation: `./gradlew test run` compiled and executed all five experiments
+successfully. Eight JUnit tests cover synchronous span relationships, restoration
 of an existing caller, context derivation without activation, scope restoration
 after an exception, independent executor spans without propagation, and explicit
 propagation with success/failure cleanup on the same reused worker thread,
 W3C trace identity/flags/state with a remote parent, and missing, malformed,
-or zero-ID trace headers with an unrelated local span active.
+or zero-ID trace headers with an unrelated local span active. Real HTTP tests
+validate the complete client/server tree, distinct traces for repeated requests,
+caller and reused server-worker context restoration, and independent server
+roots with absent or invalid headers. HTTP tests collect spans in a thread-safe
+list and wait for handler completion before asserting exported data.
 
 ## Completed Milestones
 
@@ -72,6 +89,7 @@ or zero-ID trace headers with an unrelated local span active.
 - [x] Demonstrate and validate context loss across executor threads.
 - [x] Propagate context explicitly and validate cleanup after success and failure.
 - [x] Inject/extract W3C context through a map and validate remote parent identity.
+- [x] Propagate W3C context over real HTTP and validate client/server relationships.
 
 ## Concepts to Learn
 
@@ -100,13 +118,13 @@ or zero-ID trace headers with an unrelated local span active.
 
 ## Current Focus
 
-Milestone 5: apply W3C injection/extraction to a minimal Java HTTP client/server
-flow. Validate a shared trace with client/server spans and scope restoration.
-Do not implement this milestone until explicitly requested.
+Completed. The examples demonstrate current-context activation, explicit thread
+propagation, W3C serialization, and HTTP transport, including scope cleanup and
+remote parent relationships. Choose a new learning sequence explicitly before
+expanding the POC; Kafka context propagation is a possible next POC.
 
 ## Not Yet In Scope
 
-- HTTP transport until milestone 5.
 - Baggage, messaging, Kafka, reactive execution, and virtual-thread comparisons.
 - Automatic instrumentation, Java Agent, and Micrometer Tracing.
 - Collector, Tempo, Grafana, OTLP export, and production infrastructure.
