@@ -13,8 +13,9 @@ Requires a Java 21 JDK. Run from this directory:
 ./gradlew test
 ```
 
-The initial experiment runs synchronously, without Spring, a database, network
-calls, or an observability backend. It uses the OpenTelemetry API/SDK 1.62.0 and
+The program runs a synchronous baseline followed by an executor experiment,
+without Spring, a database, network calls, or an observability backend.
+It uses the OpenTelemetry API/SDK 1.62.0 and
 JUnit Jupiter 6.0.3, matching the versions resolved by the existing manual-tracing
 POC. The Gradle wrapper is also reused from that POC.
 
@@ -47,9 +48,28 @@ existing parent and when called inside an active caller span.
 They also verify that deriving a context does not activate it and that scope
 closure restores the previous context after an exception.
 
-This establishes a baseline. It does not yet propagate context across threads
-or HTTP. The next experiment will show context loss in an executor before
-introducing explicit propagation.
+## Second experiment: context loss across threads
+
+`runWithoutPropagation` makes the order span current on the caller thread and
+submits payment work to a single-thread executor. OpenTelemetry's default context
+storage is thread-local: the worker does not inherit the caller's current span.
+No context is captured, attached, or explicitly provided as the payment's parent.
+
+Observe the caller and worker thread names. Before payment starts,
+`Span.current().getSpanContext().isValid()` is `false` on the worker. The exported
+payment and order spans have different `traceId` values and both have an invalid
+parent, printed as `parentSpanId=0000000000000000` in this standalone run.
+They represent two independent traces, although payment is logically part of
+order creation.
+
+The caller waits with `Future.get()` so payment finishes before the order ends.
+Waiting coordinates completion; it does not propagate context. The executor is
+closed, the spans are ended, and the caller's previous context is restored.
+The new test verifies the worker's missing current span, independent root spans,
+different trace IDs, and caller context restoration.
+
+The next milestone will explicitly capture and activate context in the worker.
+Thread propagation and HTTP propagation are not implemented yet.
 
 ## References
 

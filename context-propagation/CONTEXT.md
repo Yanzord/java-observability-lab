@@ -37,17 +37,23 @@ The exporter prints completed spans and their trace, span, and parent IDs.
 
 Creating a context does not activate it. Scope closure restores the prior
 context and does not end the span. Propagation and OTLP export are distinct.
-Thread and remote propagation are not implemented.
+The second experiment submits payment work to a single-thread executor without
+propagation while the order span is current on the caller. The worker has no
+valid current span before payment, so payment and order are independent root
+spans with different trace IDs. `Future.get()` waits for payment completion but
+does not propagate context. The executor closes and caller context is restored.
+Explicit thread and remote propagation are not implemented.
 
-Validation: `./gradlew test run` compiled and executed the baseline successfully.
-After adding the scope-failure case, `./gradlew test` passed both JUnit tests.
-They verify span relationships, restoration of an existing caller, context
-derivation without activation, and scope restoration after an exception.
+Validation: `./gradlew test run` compiled and executed both experiments
+successfully. Three JUnit tests cover synchronous span relationships, restoration
+of an existing caller, context derivation without activation, scope restoration
+after an exception, and independent executor spans without propagation.
 
 ## Completed Milestones
 
 - [x] Create the standalone Java/Gradle POC and local span exporter.
 - [x] Validate the synchronous baseline and scope restoration with two tests.
+- [x] Demonstrate and validate context loss across executor threads.
 
 ## Concepts to Learn
 
@@ -76,9 +82,10 @@ derivation without activation, and scope restoration after an exception.
 
 ## Current Focus
 
-Milestone 2: demonstrate context loss across executor threads without propagation.
-Compare the worker's current span, trace ID, and parent ID with the synchronous
-baseline. Do not implement this milestone until explicitly requested.
+Milestone 3: capture `Context.current()` before submitting payment and activate
+it inside the worker. Validate parent identity, failure cleanup, and context
+restoration when the executor thread is reused. Do not implement this milestone
+until explicitly requested.
 
 ## Not Yet In Scope
 

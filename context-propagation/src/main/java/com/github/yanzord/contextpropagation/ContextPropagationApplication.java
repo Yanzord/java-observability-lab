@@ -1,19 +1,49 @@
 package com.github.yanzord.contextpropagation;
 
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+
 public class ContextPropagationApplication {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException, ExecutionException {
         try (SdkTracerProvider provider = SdkTracerProvider.builder()
                 .addSpanProcessor(SimpleSpanProcessor.create(new InspectingSpanExporter()))
                 .build()) {
             runExperiment(provider.get("com.github.yanzord.contextpropagation"));
+            runWithoutPropagation(provider.get("com.github.yanzord.contextpropagation"));
+        }
+    }
+
+    static SpanContext runWithoutPropagation(Tracer tracer) throws InterruptedException, ExecutionException {
+        Context previous = Context.current();
+        Span order = tracer.spanBuilder("create-order").startSpan();
+        try (Scope scope = order.makeCurrent();
+             var executor = Executors.newSingleThreadExecutor()) {
+            System.out.println("Caller thread: " + Thread.currentThread().getName()
+                    + ", current order span: " + Span.current().getSpanContext().getSpanId());
+            return executor.submit(() -> {
+                SpanContext workerParent = Span.current().getSpanContext();
+                System.out.println("Worker thread: " + Thread.currentThread().getName()
+                        + ", current span valid before payment: " + workerParent.isValid());
+                Span payment = tracer.spanBuilder("process-payment").startSpan();
+                try (Scope paymentScope = payment.makeCurrent()) {
+                    System.out.println("Worker payment trace: " + Span.current().getSpanContext().getTraceId());
+                } finally {
+                    payment.end();
+                }
+                return workerParent;
+            }).get();
+        } finally {
+            order.end();
+            System.out.println("Previous context restored after executor: " + (Context.current() == previous));
         }
     }
 
