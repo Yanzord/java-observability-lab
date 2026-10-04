@@ -48,13 +48,22 @@ the order's trace and has the order as its parent. Nested scopes restore the
 worker's original context, including on payment failure; the next task on the
 same thread sees no valid current span. The caller owns the executor. Failures
 are propagated through `ExecutionException`; this experiment does not add
-exception events or error status. Remote propagation is not implemented.
+exception events or error status.
 
-Validation: `./gradlew test run` compiled and executed all three experiments
-successfully. Four JUnit tests cover synchronous span relationships, restoration
+The fourth experiment injects into a string map with the W3C propagator and
+extracts from `Context.root()`. The receiver explicitly uses the extracted
+context as payment's parent. Trace identity, flags, and trace state survive the
+carrier round trip; the extracted parent is remote. Missing or invalid
+`traceparent` creates a root span instead of inheriting a current local span.
+This simulates a remote boundary in one JVM. HTTP transport is not implemented.
+
+Validation: `./gradlew test run` compiled and executed all four experiments
+successfully. Six JUnit tests cover synchronous span relationships, restoration
 of an existing caller, context derivation without activation, scope restoration
 after an exception, independent executor spans without propagation, and explicit
-propagation with success/failure cleanup on the same reused worker thread.
+propagation with success/failure cleanup on the same reused worker thread,
+W3C trace identity/flags/state with a remote parent, and missing, malformed,
+or zero-ID trace headers with an unrelated local span active.
 
 ## Completed Milestones
 
@@ -62,6 +71,7 @@ propagation with success/failure cleanup on the same reused worker thread.
 - [x] Validate the synchronous baseline and scope restoration with two tests.
 - [x] Demonstrate and validate context loss across executor threads.
 - [x] Propagate context explicitly and validate cleanup after success and failure.
+- [x] Inject/extract W3C context through a map and validate remote parent identity.
 
 ## Concepts to Learn
 
@@ -90,13 +100,12 @@ propagation with success/failure cleanup on the same reused worker thread.
 
 ## Current Focus
 
-Milestone 4: inject trace context into a map carrier and extract it using the
-W3C trace context propagator. Validate remote parent identity and absent or
-invalid trace headers. Do not implement this milestone until explicitly requested.
+Milestone 5: apply W3C injection/extraction to a minimal Java HTTP client/server
+flow. Validate a shared trace with client/server spans and scope restoration.
+Do not implement this milestone until explicitly requested.
 
 ## Not Yet In Scope
 
-- W3C carriers until milestone 4.
 - HTTP transport until milestone 5.
 - Baggage, messaging, Kafka, reactive execution, and virtual-thread comparisons.
 - Automatic instrumentation, Java Agent, and Micrometer Tracing.

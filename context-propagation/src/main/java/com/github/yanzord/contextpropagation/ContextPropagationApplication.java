@@ -26,6 +26,7 @@ public class ContextPropagationApplication {
                 System.out.println("Reused worker has a valid current span: "
                         + executor.submit(() -> Span.current().getSpanContext().isValid()).get());
             }
+            W3CPropagationExperiment.runExperiment(provider.get("com.github.yanzord.contextpropagation"));
         }
     }
 

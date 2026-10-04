@@ -13,8 +13,8 @@ Requires a Java 21 JDK. Run from this directory:
 ./gradlew test
 ```
 
-The program runs a synchronous baseline followed by executor experiments with
-and without explicit propagation,
+The program runs a synchronous baseline, executor experiments with and without
+explicit propagation, and a W3C map carrier experiment,
 without Spring, a database, network calls, or an observability backend.
 It uses the OpenTelemetry API/SDK 1.62.0 and
 JUnit Jupiter 6.0.3, matching the versions resolved by the existing manual-tracing
@@ -93,8 +93,35 @@ the thread is reused. The caller owns and closes the executor.
 
 This milestone focuses on context and lifecycle cleanup. A payment failure is
 re-thrown; recording exception events and setting span error status are not added
-to this experiment. The next milestone is W3C injection/extraction through a map
-carrier. Remote and HTTP propagation are not implemented yet.
+to this experiment.
+
+## Fourth experiment: W3C map carrier
+
+`W3CPropagationExperiment` injects `Context.current()` into a
+`Map<String, String>` using `W3CTraceContextPropagator` and `Map::put` as the
+`TextMapSetter`. The receiver uses a `TextMapGetter` to read that map and extracts
+into `Context.root()`. It explicitly passes the extracted context to
+`spanBuilder(...).setParent(extracted)` before starting payment.
+
+This simulates a remote boundary in the same JVM without network transport.
+Extraction from root prevents an unrelated current local span from becoming
+the parent when headers are absent or invalid. Extraction does not itself make
+the context current.
+
+The carrier contains `traceparent` in the format
+`version-traceId-parentSpanId-traceFlags`. The injected parent span ID identifies
+the sending order span. `tracestate` carries vendor trace state when present;
+the default standalone example has none. The entire in-process context and the
+span object are not serialized.
+
+Observe matching trace IDs, payment's parent ID equal to the order's span ID,
+and a parent marked `remote=true` after extraction. Tests also verify sampled
+flags and a `tracestate` round trip. Missing, malformed, or zero-ID `traceparent`
+values produce a new root payment span, even with an unrelated local span active.
+Both valid and invalid input paths restore the previous context.
+
+The next milestone applies this mechanism to a real Java HTTP client/server.
+HTTP transport is not implemented yet.
 
 ## References
 
