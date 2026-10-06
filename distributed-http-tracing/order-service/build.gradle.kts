@@ -1,0 +1,31 @@
+plugins {
+    java
+    id("org.springframework.boot")
+    id("io.spring.dependency-management")
+}
+
+group = "com.github.yanzord"
+version = "0.0.1-SNAPSHOT"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    implementation("io.opentelemetry:opentelemetry-api")
+    implementation("io.opentelemetry:opentelemetry-sdk")
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(project(":payment-service"))
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
