@@ -64,6 +64,7 @@ def main():
     try:
         run_compose("up", "--build", "-d", "--wait", "--wait-timeout", "120")
         address = run_compose("port", "order-service", "8081", capture=True).strip()
+        payment_address = run_compose("port", "payment-service", "8082", capture=True).strip()
         print(f"\norder-service: http://{address}", flush=True)
         print("order-service calls http://payment-service:8082/payments through the Compose network.")
         previous_trace = None
@@ -76,8 +77,40 @@ def main():
             trace = show_trace(order_output, payment_output, attempt)
             check(trace != previous_trace, "Each order request must start a fresh trace")
             previous_trace = trace
-        print("\nValidated: shared traces across services, remote parent linkage, and a fresh trace per request.")
-        print("Without propagation (milestone 1), payment started a separate root trace.", flush=True)
+        print("\nCalling payment directly to isolate header extraction; these requests bypass order-service.")
+        valid = "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01"
+        cases = [("Missing header", None), ("Malformed header", "invalid"),
+                 ("Zero IDs", "00-00000000000000000000000000000000-0000000000000000-01"),
+                 ("Valid header after invalid requests", valid), ("Missing header after valid request", None)]
+        seen_traces = {previous_trace}
+        for index, (label, header) in enumerate(cases, start=3):
+            headers = {} if header is None else {"traceparent": header}
+            request = urllib.request.Request(f"http://{payment_address}/payments", headers=headers, method="POST")
+            with urllib.request.urlopen(request, timeout=10) as response:
+                check(response.status == 200 and response.read() == b"approved", "Unexpected payment response")
+            output = run_compose("logs", "--no-color", "payment-service", capture=True)
+            spans = [match.groupdict() for match in SPAN_PATTERN.finditer(output)]
+            received = re.findall(r"Received traceparent=(\S+) parentRemote=(\w+)", output)
+            check(len(spans) == len(received) == index, "Expected one completed payment span per request")
+            server = spans[-1]
+            check(server["kind"] == "SERVER", "Expected a payment SERVER span")
+            check(received[-1][0] == (header if header is not None else "null"), "Unexpected received header")
+            if header == valid:
+                check(server["trace"] == valid.split("-")[1] and server["parent"] == valid.split("-")[2],
+                      "Valid context must be preserved after invalid requests")
+                check(server["remote"] == received[-1][1] == "true", "Expected a remote parent")
+            else:
+                check(server["parent"] == "0" * 16 and server["remote"] == received[-1][1] == "false",
+                      "Missing or invalid context must create a root")
+                check(server["trace"] not in seen_traces and server["trace"] != valid.split("-")[1],
+                      "A root must not reuse a previous or supplied trace")
+            seen_traces.add(server["trace"])
+            print(f"\n{label}: HTTP 200 approved, received traceparent={received[-1][0]}")
+            print(f"payment SERVER traceId={server['trace']} parent={server['parent']} remote={server['remote']}")
+            print("Valid header: the supplied remote parent is preserved." if header == valid else
+                  "No valid remote context: payment starts an independent root trace.", flush=True)
+        print("\nValidated: propagation, absent/malformed headers, zero IDs, and no previous-parent reuse.")
+        print("JUnit additionally checks exact Scope restoration on the same worker and after HTTP failure.", flush=True)
     except (OSError, RuntimeError, subprocess.CalledProcessError):
         subprocess.run([*compose, "logs", "--no-color", "--tail", "30"], cwd=ROOT)
         raise

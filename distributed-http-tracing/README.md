@@ -11,10 +11,12 @@ python3 demo.py
 ```
 
 The script builds the images, waits for both services, sends two real HTTP
-requests, and prints the received `traceparent`, its fields, and the span tree
-with actual IDs. It validates shared trace IDs, distinct spans, remote parent
-linkage, sampling, and a fresh trace for each request. It explains how the result
-compares with the baseline without propagation.
+order requests, followed by direct payment requests with absent, malformed,
+zero-ID, valid, and absent-again headers. It prints the received `traceparent`,
+its fields, and the span tree with actual IDs. It validates shared trace IDs,
+distinct spans, remote parent linkage, sampling, fresh root traces, and fallback
+without reusing a previous parent. It explains how the result compares with the
+baseline without propagation.
 
 Only Python's standard library is used. Java and Gradle run inside the build
 image. The script resolves its directory, so it also works when invoked from
@@ -123,12 +125,43 @@ trace B: payment SERVER (root)
 With manual propagation, the payment root becomes a child of the CLIENT within
 trace A. HTTP success remains HTTP 200 `approved` in both cases: propagation
 changes telemetry relationships, independently of the business response.
-Missing and malformed headers will be explored in the next milestone.
+Missing and malformed headers are compared in the final milestone below.
 
 Manual controller spans cover handlers only, excluding serialization and the
 wider servlet lifecycle. CLIENT spans cover the HTTP call and local client
 cleanup. Export is synchronous to local logs. There is no Java Agent, automatic
 instrumentation, Micrometer Tracing, or tracing backend.
+
+## Final milestone: missing and invalid context
+
+The demo first validates the complete order → payment trace, then calls payment
+directly to isolate extraction. The valid direct request uses a fixed synthetic
+remote context; no span for that hypothetical sender is created by the demo.
+
+| Incoming traceparent | Payment SERVER result |
+| --- | --- |
+| Valid | Same supplied Trace ID, supplied parent Span ID, remote parent |
+| Absent | New Trace ID, zero parent ID, no remote parent |
+| Malformed (`invalid`) | New independent root, HTTP 200 |
+| All-zero trace/span IDs | Invalid context; new independent root, HTTP 200 |
+| Valid after invalid | Supplied context is accepted again |
+| Absent after valid | New root; the previous remote parent is not reused |
+
+The propagator rejects unusable context. Because extraction starts from
+`Context.root()`, an invalid header cannot fall back to an unrelated local span.
+No new header-validation code or special error response is needed. Payment
+still returns `approved`: losing trace continuity does not reject the operation.
+
+Repeated requests help expose context leakage. JUnit additionally calls the
+payment controller on the same executor worker with an unrelated local span
+active, verifies that exact Context is restored after every invocation, and
+checks the worker's original Context again in a later task. Another test makes
+the order HTTP client receive HTTP 500: the exception propagates, both order
+spans end, and the caller's previous Context is restored. Scope closure and span
+completion are separate operations, including on failure.
+
+All three learning milestones are complete. Automatic instrumentation and
+telemetry backend infrastructure remain outside this POC.
 
 ## Validate
 
@@ -144,6 +177,8 @@ independent tracer providers and real HTTP servers on ephemeral ports. It checks
 the response, CLIENT/SERVER kinds, local parent identity, service identity,
 shared trace IDs, remote payment parents, propagated trace flags, distinct span
 IDs, and fresh traces on repeated requests. The test runs
-in one JVM; running the commands above uses two independent JVMs.
+in one JVM; the demo runs two independent JVMs in containers. Additional tests
+cover real HTTP header fallback (including mixed-case header names), a reused
+worker, and context cleanup on payment HTTP failure.
 
-See [CONTEXT.md](CONTEXT.md) for the next learning milestone.
+See [CONTEXT.md](CONTEXT.md) for the completed learning sequence.

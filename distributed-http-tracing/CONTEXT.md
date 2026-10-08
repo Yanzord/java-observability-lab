@@ -28,44 +28,42 @@ SDK, service resource, and exporter. No persistence or additional business rules
 
 ## Current Progress
 
-The baseline without propagation was completed in commit `80e3ffd`: payment
-started an independent root trace. Manual W3C propagation is now implemented.
-Order listens on 8081 and payment on 8082. Each application has its own SDK and
-resource; `payment.url` / `PAYMENT_URL` configures the outgoing endpoint.
+All three learning milestones are implemented and validated. No implementation
+work remains in this sequence. The baseline without propagation
+(commit `80e3ffd`) showed independent order and payment traces. Manual W3C
+injection/extraction now connects them through a remote parent.
 
-The order SERVER remains a root. Its child CLIENT becomes current before
-`W3CTraceContextPropagator.inject()` writes HTTP headers. Payment extracts from
-`Context.root()` through a servlet header getter and passes the extracted
-context to `setParent()` for its SERVER span. All three spans now share one trace;
-the payment SERVER has the CLIENT as its remote parent. The header carries the
-CLIENT Span ID, not the receiving SERVER ID. Extraction does not activate context;
-the new SERVER span is made current explicitly. Scopes close through
-try-with-resources and spans end in finally.
+Order creates a root SERVER and child CLIENT. It injects the current CLIENT
+context before sending HTTP. Payment extracts from `Context.root()` using a
+case-insensitive servlet getter and explicitly sets the SERVER parent. Valid
+headers preserve Trace ID and identify the CLIENT as remote parent; absent,
+malformed, or zero-ID headers produce independent roots. Payment continues to
+return HTTP 200 `approved`. No new production Java code or dependencies were
+needed for fallback: the existing propagator and root extraction already provide
+it. Order's incoming headers remain outside this experiment.
 
-Payment logs incoming `traceparent` and extracted remote identity. Both inspecting
-exporters show `parentRemote` alongside IDs and service resources. Local scopes
-and full execution Context are not serialized. There are no new dependencies or
-automatic instrumentation. Request spans cover controller handlers only.
+Scopes close through try-with-resources; spans end separately in finally.
+Payment logs `traceparent` and extracted remote identity; exporters log span and
+parent IDs, parentRemote, and service resources. Request spans cover controller
+handlers only. SDKs remain independent with local synchronous export.
 
-Validation: `./gradlew test bootJar --offline` passed with Java 21. The updated
-JUnit test uses separate Spring contexts/SDKs and real HTTP, checking two requests,
-HTTP 200 `approved`, shared trace IDs, distinct span IDs, CLIENT/SERVER parent
-linkage, remote parent identity, propagated flags, resources, and fresh traces.
-Both executable JARs also passed two requests in independent JVMs: the received
-version 00 header matched the CLIENT trace/span IDs, sampling was set, and the
-payment SERVER linked to that CLIENT with a remote parent. Validation processes
-were stopped afterward.
+Java 21 validation: `./gradlew test bootJar --offline` passed all four JUnit tests:
+- Complete order/payment HTTP traces, service identities, flags, and fresh traces.
+- Real HTTP with valid, absent, malformed, zero-ID, valid-again, and absent-again
+  headers, including mixed-case names and a single server worker configuration.
+- Exact context restoration across repeated payment calls on one executor worker
+  with an unrelated local parent active, then restoration on the next worker task.
+- Order HTTP 500 propagation, ended CLIENT/SERVER spans, and restored caller context.
 
-`Dockerfile` builds each service with Java 21 and runs it in a JRE container.
-Compose connects the services through the payment service name and publishes
-temporary loopback ports. `demo.py` starts a separate Compose project, shows and
-validates two requests and their traceparent/span relationships, then removes
-its containers and network. It needs Docker Compose and Python, without a local
-JDK. This supports the completed propagation milestone; milestone 3 remains
-unimplemented. Validation: `python3 demo.py` successfully built both images,
-waited for healthy containers, displayed and validated two HTTP 200 responses
-and the complete cross-service span tree, then removed its containers and
-network. `docker compose config --quiet` and Python compilation also passed.
+Compose runs independent Java 21 containers on temporary loopback ports. The
+Python standard-library demo uses an isolated Compose project, displays two full
+order traces, then directly calls payment to compare header fallback. Its valid
+direct header represents a synthetic remote sender. It removes its containers
+and network afterward. Docker Compose and Python are sufficient to run it.
+Final validation: `python3 demo.py` built both images, checked two complete order
+traces and five direct header scenarios, and removed its containers/network.
+All seven HTTP responses were 200. Python compilation and `git diff --check`
+also passed.
 
 ## Completed Milestones
 
@@ -73,6 +71,8 @@ network. `docker compose config --quiet` and Python compilation also passed.
 - [x] Validate the HTTP baseline without propagation through JUnit and two JVMs.
 - [x] Inject/extract W3C headers manually and validate shared traces and remote parents.
 - [x] Containerize both services and validate the runnable Python demonstration.
+- [x] Validate absent/malformed/zero-ID headers, recovery, and independent roots.
+- [x] Validate exact scope restoration on a reused worker and on order HTTP failure.
 
 ## Concepts to Learn
 
@@ -97,15 +97,14 @@ network. `docker compose config --quiet` and Python compilation also passed.
 
 ## Current Focus
 
-Milestone 3: compare valid propagation with absent and malformed headers.
-Validate independent server roots, repeated requests, and scope restoration.
-Do not implement this milestone until explicitly requested.
+Completed. The POC demonstrates manual HTTP propagation between independent
+services, remote parents, trace continuity, fallback, and scope cleanup.
+Choose a new learning sequence explicitly before expanding it; Kafka context
+propagation is a possible next POC.
 
 ## Not Yet In Scope
 
-Missing/malformed header comparisons and explicit scope cleanup experiments
-belong to milestone 3.
-Also excluded: Java Agent, automatic instrumentation, Micrometer Tracing,
+Excluded: Java Agent, automatic instrumentation, Micrometer Tracing,
 OTLP/Collector/Tempo/Grafana, baggage, Kafka, databases, retries, complex sampling,
 reactive execution, and production architecture.
 
