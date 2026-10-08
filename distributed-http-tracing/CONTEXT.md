@@ -12,6 +12,7 @@ two independent Spring Boot applications.
 - Spring Web MVC, OpenTelemetry API and SDK (Spring-managed versions).
 - JDK HTTP client and JUnit Jupiter through the existing Spring test starter.
 - Local inspecting exporters with `SimpleSpanProcessor`.
+- Docker Compose and a Python standard-library demonstration script.
 
 ## Main Goal
 
@@ -55,11 +56,23 @@ version 00 header matched the CLIENT trace/span IDs, sampling was set, and the
 payment SERVER linked to that CLIENT with a remote parent. Validation processes
 were stopped afterward.
 
+`Dockerfile` builds each service with Java 21 and runs it in a JRE container.
+Compose connects the services through the payment service name and publishes
+temporary loopback ports. `demo.py` starts a separate Compose project, shows and
+validates two requests and their traceparent/span relationships, then removes
+its containers and network. It needs Docker Compose and Python, without a local
+JDK. This supports the completed propagation milestone; milestone 3 remains
+unimplemented. Validation: `python3 demo.py` successfully built both images,
+waited for healthy containers, displayed and validated two HTTP 200 responses
+and the complete cross-service span tree, then removed its containers and
+network. `docker compose config --quiet` and Python compilation also passed.
+
 ## Completed Milestones
 
 - [x] Create the two independently executable Spring Boot services.
 - [x] Validate the HTTP baseline without propagation through JUnit and two JVMs.
 - [x] Inject/extract W3C headers manually and validate shared traces and remote parents.
+- [x] Containerize both services and validate the runnable Python demonstration.
 
 ## Concepts to Learn
 

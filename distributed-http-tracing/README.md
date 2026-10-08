@@ -1,9 +1,56 @@
 # Distributed HTTP tracing
 
 Two independent Spring Boot services with explicit OpenTelemetry instrumentation.
-Requires Java 21. Run commands from this directory.
+Requires Docker Compose for container execution, plus Python 3 for the guided
+demo. Local Gradle execution requires Java 21. Run commands from this directory.
 
-## Run
+## Guided demo
+
+```bash
+python3 demo.py
+```
+
+The script builds the images, waits for both services, sends two real HTTP
+requests, and prints the received `traceparent`, its fields, and the span tree
+with actual IDs. It validates shared trace IDs, distinct spans, remote parent
+linkage, sampling, and a fresh trace for each request. It explains how the result
+compares with the baseline without propagation.
+
+Only Python's standard library is used. Java and Gradle run inside the build
+image. The script resolves its directory, so it also works when invoked from
+another directory. It uses its own Compose project and temporary localhost
+ports, then removes its containers and network, including on failure or Ctrl+C.
+Other Compose projects are unaffected. Docker retains the built images.
+
+## Run with Docker Compose
+
+```bash
+docker compose up --build -d --wait
+```
+
+The published localhost ports are assigned dynamically to avoid conflicts with
+other POCs. Find the order address, then send a request:
+
+```bash
+docker compose port order-service 8081
+curl -i -X POST http://127.0.0.1:<published-port>/orders
+
+docker compose logs -f order-service payment-service
+```
+
+Inside the Compose network, order calls `http://payment-service:8082/payments`.
+Both applications run in separate Java 21 containers. TCP healthchecks gate
+startup; there are no additional application endpoints or dependencies.
+Payment also publishes a temporary localhost port, discoverable with
+`docker compose port payment-service 8082`.
+
+Remove these services when finished:
+
+```bash
+docker compose down
+```
+
+## Run locally
 
 Start each service in a separate terminal:
 
@@ -84,6 +131,9 @@ cleanup. Export is synchronous to local logs. There is no Java Agent, automatic
 instrumentation, Micrometer Tracing, or tracing backend.
 
 ## Validate
+
+`python3 demo.py` validates the containerized flow without a local JDK. For the
+existing JUnit tests and JAR build with Java 21:
 
 ```bash
 ./gradlew test bootJar
