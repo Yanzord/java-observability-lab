@@ -20,5 +20,6 @@ See [CONTEXT.md](context-propagation/CONTEXT.md) for the current learning focus.
 
 The [distributed-http-tracing POC](distributed-http-tracing/README.md) studies
 manual context propagation between independent order and payment Spring Boot
-services. It begins with HTTP calls without propagation. See
+services. It compares an initial baseline without propagation with manual W3C
+injection/extraction and shared traces. See
 [CONTEXT.md](distributed-http-tracing/CONTEXT.md) for the current learning focus.

@@ -3,6 +3,8 @@ package com.github.yanzord.distributedhttptracing.order;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,8 +34,11 @@ public class OrderController {
         try (Scope scope = server.makeCurrent()) {
             Span client = tracer.spanBuilder("POST /payments").setSpanKind(SpanKind.CLIENT).startSpan();
             try (Scope clientScope = client.makeCurrent(); HttpClient http = HttpClient.newHttpClient()) {
-                HttpRequest request = HttpRequest.newBuilder(paymentUrl).timeout(Duration.ofSeconds(5))
-                        .POST(HttpRequest.BodyPublishers.noBody()).build();
+                var builder = HttpRequest.newBuilder(paymentUrl).timeout(Duration.ofSeconds(5))
+                        .POST(HttpRequest.BodyPublishers.noBody());
+                W3CTraceContextPropagator.getInstance().inject(Context.current(), builder,
+                        (carrier, key, value) -> carrier.header(key, value));
+                HttpRequest request = builder.build();
                 HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() != 200) {
                     throw new IllegalStateException("Payment returned HTTP " + response.statusCode());

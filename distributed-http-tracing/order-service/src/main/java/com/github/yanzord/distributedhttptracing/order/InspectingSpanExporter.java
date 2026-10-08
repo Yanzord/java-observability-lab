@@ -15,9 +15,9 @@ public class InspectingSpanExporter implements SpanExporter {
     @Override
     public CompletableResultCode export(Collection<SpanData> spans) {
         for (SpanData span : spans) {
-            logger.info("Span name={} traceId={} spanId={} parentSpanId={} kind={} startEpochNanos={} endEpochNanos={} durationMs={} status={} attributes={} events={} resource={} scope={}",
+            logger.info("Span name={} traceId={} spanId={} parentSpanId={} parentRemote={} kind={} startEpochNanos={} endEpochNanos={} durationMs={} status={} attributes={} events={} resource={} scope={}",
                     span.getName(), span.getTraceId(), span.getSpanId(), span.getParentSpanId(),
-                    span.getKind(), span.getStartEpochNanos(), span.getEndEpochNanos(),
+                    span.getParentSpanContext().isRemote(), span.getKind(), span.getStartEpochNanos(), span.getEndEpochNanos(),
                     (span.getEndEpochNanos() - span.getStartEpochNanos()) / 1_000_000.0,
                     span.getStatus(), span.getAttributes(), span.getEvents(),
                     span.getResource(), span.getInstrumentationScopeInfo());

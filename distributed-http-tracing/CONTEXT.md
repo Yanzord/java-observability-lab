@@ -27,25 +27,39 @@ SDK, service resource, and exporter. No persistence or additional business rules
 
 ## Current Progress
 
-The initial baseline is implemented. Order listens on 8081 and payment on 8082.
-Order creates a root SERVER span and a local child CLIENT span. Payment creates
-an independent root SERVER span. The client does not inject headers; the servers
-do not extract them. Spans are made current with try-with-resources scopes and
-ended in finally. Inspecting exporters print trace and parent IDs plus resources.
-The payment URL is configurable through `payment.url` / `PAYMENT_URL`.
+The baseline without propagation was completed in commit `80e3ffd`: payment
+started an independent root trace. Manual W3C propagation is now implemented.
+Order listens on 8081 and payment on 8082. Each application has its own SDK and
+resource; `payment.url` / `PAYMENT_URL` configures the outgoing endpoint.
 
-Validation: `./gradlew test bootJar --offline` passed with Java 21. The JUnit
-integration test validates two HTTP requests using separate Spring contexts and
-SDKs. Both executable JARs were also started in independent JVMs on temporary
-ports: two POST requests returned HTTP 200 `approved`, the order CLIENT had the
-order SERVER as parent, and payment had an independent root with a different
-trace ID. Repeated requests produced fresh traces in both services. All validation
-processes were stopped afterward.
+The order SERVER remains a root. Its child CLIENT becomes current before
+`W3CTraceContextPropagator.inject()` writes HTTP headers. Payment extracts from
+`Context.root()` through a servlet header getter and passes the extracted
+context to `setParent()` for its SERVER span. All three spans now share one trace;
+the payment SERVER has the CLIENT as its remote parent. The header carries the
+CLIENT Span ID, not the receiving SERVER ID. Extraction does not activate context;
+the new SERVER span is made current explicitly. Scopes close through
+try-with-resources and spans end in finally.
+
+Payment logs incoming `traceparent` and extracted remote identity. Both inspecting
+exporters show `parentRemote` alongside IDs and service resources. Local scopes
+and full execution Context are not serialized. There are no new dependencies or
+automatic instrumentation. Request spans cover controller handlers only.
+
+Validation: `./gradlew test bootJar --offline` passed with Java 21. The updated
+JUnit test uses separate Spring contexts/SDKs and real HTTP, checking two requests,
+HTTP 200 `approved`, shared trace IDs, distinct span IDs, CLIENT/SERVER parent
+linkage, remote parent identity, propagated flags, resources, and fresh traces.
+Both executable JARs also passed two requests in independent JVMs: the received
+version 00 header matched the CLIENT trace/span IDs, sampling was set, and the
+payment SERVER linked to that CLIENT with a remote parent. Validation processes
+were stopped afterward.
 
 ## Completed Milestones
 
 - [x] Create the two independently executable Spring Boot services.
 - [x] Validate the HTTP baseline without propagation through JUnit and two JVMs.
+- [x] Inject/extract W3C headers manually and validate shared traces and remote parents.
 
 ## Concepts to Learn
 
@@ -70,14 +84,14 @@ processes were stopped afterward.
 
 ## Current Focus
 
-Milestone 2: manually inject W3C context from the order CLIENT span and extract
-it in payment. Observe `traceparent`, confirm the extracted parent is remote,
-and validate one shared trace with the payment SERVER parent matching the CLIENT.
+Milestone 3: compare valid propagation with absent and malformed headers.
+Validate independent server roots, repeated requests, and scope restoration.
 Do not implement this milestone until explicitly requested.
 
 ## Not Yet In Scope
 
-Manual injection/extraction and failure comparisons belong to later milestones.
+Missing/malformed header comparisons and explicit scope cleanup experiments
+belong to milestone 3.
 Also excluded: Java Agent, automatic instrumentation, Micrometer Tracing,
 OTLP/Collector/Tempo/Grafana, baggage, Kafka, databases, retries, complex sampling,
 reactive execution, and production architecture.

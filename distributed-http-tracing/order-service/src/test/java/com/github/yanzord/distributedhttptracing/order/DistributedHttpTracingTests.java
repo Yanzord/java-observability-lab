@@ -34,7 +34,7 @@ class DistributedHttpTracingTests {
     private static final List<SpanData> spans = new CopyOnWriteArrayList<>();
 
     @Test
-    void missingPropagationCreatesTwoIndependentTracesOverHttp() throws Exception {
+    void manualPropagationConnectsIndependentServicesOverHttp() throws Exception {
         spans.clear();
         try (var payment = new SpringApplicationBuilder(PaymentServiceApplication.class, CaptureConfiguration.class)
                 .run("--server.port=0", "--spring.application.name=payment-service");
@@ -60,9 +60,12 @@ class DistributedHttpTracingTests {
                 assertFalse(orderServer.getParentSpanContext().isValid());
                 assertEquals(orderServer.getTraceId(), client.getTraceId());
                 assertEquals(orderServer.getSpanId(), client.getParentSpanId());
-                assertFalse(paymentServer.getParentSpanContext().isValid());
-                assertFalse(paymentServer.getParentSpanContext().isRemote());
-                assertNotEquals(client.getTraceId(), paymentServer.getTraceId());
+                assertTrue(paymentServer.getParentSpanContext().isValid());
+                assertTrue(paymentServer.getParentSpanContext().isRemote());
+                assertEquals(client.getTraceId(), paymentServer.getTraceId());
+                assertEquals(client.getSpanId(), paymentServer.getParentSpanId());
+                assertEquals(client.getSpanContext().getTraceFlags(), paymentServer.getParentSpanContext().getTraceFlags());
+                assertEquals(3, spans.stream().map(SpanData::getSpanId).distinct().count());
                 assertEquals("order-service", client.getResource().getAttribute(AttributeKey.stringKey("service.name")));
                 assertEquals("payment-service", paymentServer.getResource().getAttribute(AttributeKey.stringKey("service.name")));
                 assertNotEquals(previousOrderTrace, orderServer.getTraceId());
